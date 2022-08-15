@@ -1,0 +1,2 @@
+nvcc -I /usr/local/magma/include -DADD_ -DHAVE_CUBLAS -c DiffusionADI_main.cu
+nvcc -o DiffusionADI_main2 DiffusionADI_main.o -lmagma -llapack -lcublas -lcudart -lm -lgfortran
