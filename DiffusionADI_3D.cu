@@ -17,14 +17,14 @@ __device__ __constant__ double dev_phi_C;
 __device__ __constant__ double dev_alpha;
 __device__ __constant__ double dev_beta;
 
-// 
+//
+__global__ void test_func();
 __global__ void init_grid(double* u);
 __global__ void init_A(double* A);
 __global__ void expl_x(double* u, double* du);
 __global__ void expl_y(double* u, double* du);
 __global__ void impl_x(double* u, double* du, double* A);
 __global__ void transpose(double* u, double* uT);
-__global__ void test_func(double* u, double* du);
 
 int main(int argc, char* argv[]) {
 
@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
   double time_step = tau/2;
   double alpha = time_step*R;
   double beta = time_step*C;
-  printf("%lf\n", lambda);
+  //printf("%lf\n", lambda);
   
   magma_init();
   magma_int_t *piv, info;
@@ -109,8 +109,9 @@ int main(int argc, char* argv[]) {
   cudaEventCreate(&stop);
   cudaEventRecord(start, 0);  
 
-  dim3 grid(1,1,1);
-  dim3 block(threadsPerBlock, threadsPerBlock, threadsPerBlock);
+  dim3 grid(localN,localN);
+  //dim3 block(threadsPerBlock, threadsPerBlock, threadsPerBlock);
+  dim3 block(localN);
   
   for (int i=0; i<numStreams; ++i) {
     // Initialize grid using kernel
@@ -123,10 +124,10 @@ int main(int argc, char* argv[]) {
     for (int j=0; j<num_iter; ++j) {
       //printf("%d,", j);
       // Iterate explicitly in the x direction using kernel
-      test_func<<<grid, block>>>(dev_du[i], dev_uT);
+      //test_func<<<grid, block>>>();
       //expl_x<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_u[i], dev_du[i]);
       // Transpose grid in kernel
-      transpose<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_du[i], dev_uT[i]);
+      //transpose<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_du[i], dev_uT[i]);
       // Iterate implicitly in the y direction in kernel
       //magma_dgetrs_gpu(MagmaTrans, m, n, dev_A[i], m, piv, dev_uT[i], m, &info);
       //expl_x<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_uT[i], dev_du[i]);
@@ -142,8 +143,8 @@ int main(int argc, char* argv[]) {
   cudaEventElapsedTime(&elapsedTime, start, stop);
   
   for (int i=0; i<numStreams; ++i) {
-    cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
   }
 
   for (int i=0; i<numStreams; ++i)
@@ -159,43 +160,57 @@ int main(int argc, char* argv[]) {
   
   for (int i = 0; i<numStreams; ++i)
     cudaStreamDestroy(stream[i]);
-  
-  FILE *fileid = fopen("Test_du.csv", "w");
 
-  for (int i=0; i<(N*N); ++i)
-    if (i % N == 0) {
-      fprintf(fileid, "%lf", du[i]);
-    } else if (i % N < (N-1)) {
-      fprintf(fileid, ",%lf", du[i]);
-    } else {
-      fprintf(fileid, ",%lf\n", du[i]);
+  char fn1[25], fn2[23];
+
+  for (int j=0; j<N; ++j) {
+
+    int offset = j*N*N;
+
+    sprintf(fn1, "du_files/Test_du_%d.csv", j);
+    sprintf(fn2, "u_files/Test_u_%d.csv", j);
+
+    FILE *fileid = fopen(fn1, "w");
+
+    for (int i=0; i<(N*N); ++i) {
+      if (i % N == 0) {
+	fprintf(fileid, "%lf", du[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid, ",%lf", du[i+offset]);
+      } else {
+	fprintf(fileid, ",%lf\n", du[i+offset]);
+      }
     }
 
-  fclose(fileid);
-
+    fclose(fileid);
   
-  FILE *fileid2 = fopen("Test_u.csv", "w");
+    FILE *fileid2 = fopen(fn2, "w");
   
-  for (int i=0; i<(N*N); ++i)
-    if (i % N == 0) {
-      fprintf(fileid2, "%lf", u[i]);
-    } else if (i % N < (N-1)) {
-      fprintf(fileid2, ",%lf", u[i]);
-    } else {
-      fprintf(fileid2, ",%lf\n", u[i]);
+    for (int i=0; i<(N*N); ++i) {
+      //printf("%lf\n", u[i+offset]);
+      //printf("%d\n", offset);
+      if (i % N == 0) {
+	fprintf(fileid2, "%lf", u[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid2, ",%lf", u[i+offset]);
+      } else {
+	fprintf(fileid2, ",%lf\n", u[i+offset]);
+      }
     }
 
-  fclose(fileid2);
+    fclose(fileid2);
+
+  }
 
   FILE *fileid3 = fopen("Test_A.csv", "w");
   
   for (int i=0; i<(N*N); ++i)
     if (i % N == 0) {
-      fprintf(fileid2, "%lf", A[i]);
+      fprintf(fileid3, "%lf", A[i]);
     } else if (i % N < (N-1)) {
-      fprintf(fileid2, ",%lf", A[i]);
+      fprintf(fileid3, ",%lf", A[i]);
     } else {
-      fprintf(fileid2, ",%lf\n", A[i]);
+      fprintf(fileid3, ",%lf\n", A[i]);
     }
 
   fclose(fileid3);
@@ -208,10 +223,20 @@ int main(int argc, char* argv[]) {
   return 0;
 }
 
+__global__ void test_func() {
+  
+  int i = threadIdx.x + blockIdx.x * blockDim.x;
+  int j = threadIdx.y + blockIdx.y * blockDim.y;
+  int k = threadIdx.z + blockIdx.z * blockDim.z;
+  printf("GPU - i = %d, j = %d, k = %d\n", i, j, k);
+  printf("Threadx = %d, Blockx = %d, Thready = %d, Blocky = %d\n", threadIdx.x, blockIdx.x, threadIdx.y, blockIdx.y);
+  
+}
+
 __global__ void init_grid(double* u) {
-  int l_i = threadIdx.x + blockIdx.x*blockDim.x;
-  int l_j = threadIdx.y + blockIdx.y*blockDim.y;
-  int l_k = threadIdx.z + blockIdx.z*blockDim.z;
+  int l_i = threadIdx.x;
+  int l_j = blockIdx.x;
+  int l_k = blockIdx.y;
 
   int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
   
@@ -247,11 +272,11 @@ __global__ void init_A(double* A) {
   //printf("%lf\n", A[g_i]);
 } 
 
-__global__ void expl_x(double* u, double* du) {
+__global__ void expl_x(double* u, double* du, double dt) {
   __shared__ double localu[maxThreadsPerBlock];
-  int l_i = threadIdx.x + blockIdx.x*blockDim.X;
-  int l_j = threadIdx.y + blockIdx.y*blockDim.y;
-  int l_k = threadIdx.z + blockIdx.z*blockDim.z;
+  int l_i = threadIdx.x;
+  int l_j = blockIdx.x;
+  int l_k = blockIdx.y;
 
   // Index to pull data from global into local
   int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
@@ -272,28 +297,27 @@ __global__ void expl_x(double* u, double* du) {
   }  
   
   if (l_i == 0 || l_i == (dev_N - 1)) {
-    du[g_i] = localu[l_i];
+    du[g_i] = 0
   } else if (l_j == 0 || l_j == (dev_N - 1)) {
-    du[g_i] = localu[l_i];
+    du[g_i] = 0
   } else {
     //printf("%lf\n", dev_lambda);
-    du[g_i] = localu[l_i] + (dev_lambda*localu[l_i + 1] - 2*dev_lambda*localu[l_i] + dev_lambda*localu[l_i-1])
+    du[g_i] = (dev_lambda*localu[l_i + 1] - 2*dev_lambda*localu[l_i] + dev_lambda*localu[l_i-1])
       + react_term;
   }
-
-  //u[g_i] = du[g_i];
 }
 
 
-__global__ void expl_y(double* u, double* du) {
+__global__ void expl_y(double* u, double* du, double dt) {
   __shared__ double localu[maxThreadsPerBlock];
-  int l_i = threadIdx.x + blockIdx.x*blockDim.X;
-  int l_j = threadIdx.y + blockIdx.y*blockDim.y;
-  int l_k = threadIdx.z + blockIdx.z*blockDim.z;
 
-  // Transpose coordinates index from global memory to local
+  int l_i = threadIdx.x;
+  int l_j = blockIdx.x;
+  int l_k = blockIdx.y;
+
+  // Index to pull data from global into local
   int g_i = l_j + dev_N*l_i + dev_N*dev_N*l_k;
-
+  
   localu[l_i] = u[g_i];
   
   __syncthreads();
@@ -310,15 +334,50 @@ __global__ void expl_y(double* u, double* du) {
   }  
   
   if (l_i == 0 || l_i == (dev_N - 1)) {
-    du[g_i] = localu[l_i];
+    du[g_i] = 0;
   } else if (l_j == 0 || l_j == (dev_N - 1)) {
-    du[g_i] = localu[l_i];
+    du[g_i] = 0;
   } else {
-    du[g_i] = localu[l_i] + (dev_lambda*localu[l_i + 1] - 2*dev_lambda*localu[l_i] + dev_lambda*localu[l_i-1])
+    du[g_i] = (dev_lambda*localu[l_i + 1] - 2*dev_lambda*localu[l_i] + dev_lambda*localu[l_i-1])
       + react_term;
   }
+  
+}
 
-  //u[g_i] = du[g_i];
+__global__ void expl_z(double* u, double* du, double dt) {
+  __shared__ double localu[maxThreadsPerBlock];
+
+  int l_i = threadIdx.x;
+  int l_j = blockIdx.x;
+  int l_k = blockIdx.y;
+
+  // Index to pull data from global into local
+  int g_i = l_k + dev_N*l_j + dev_N*dev_N*l_i;
+  
+  localu[l_i] = u[g_i];
+  
+  __syncthreads();
+
+  double react_term;
+  double phi_V = dev_phi_C - 10;
+
+  if (localu[l_i] > phi_V) {
+    react_term = -dev_alpha*localu[l_i] - dev_beta;
+  } else if (localu[l_i] < phi_V && localu[l_i] > dev_beta) {
+    react_term = -dev_beta;
+  } else {
+    react_term = -localu[l_i];
+  }  
+  
+  if (l_i == 0 || l_i == (dev_N - 1)) {
+    du[g_i] = 0;
+  } else if (l_j == 0 || l_j == (dev_N - 1)) {
+    du[g_i] = 0;
+  } else {
+    du[g_i] = (dev_lambda*localu[l_i + 1] - 2*dev_lambda*localu[l_i] + dev_lambda*localu[l_i-1])
+      + react_term;
+  }
+  
 }
 
 __global__ void transpose(double* u, double* uT) {
@@ -330,10 +389,3 @@ __global__ void transpose(double* u, double* uT) {
   uT[l_j + dev_N*l_i] = u[l_i + dev_N*l_j];
 }
 
-__global__ void expl_x(double* u, double* du) {
-
-  int i = threadIdx.x + blockIdx.x * blockDim.x;
-  int j = threadIdx.y + blockIdx.y * blockDim.y;
-  int k = threadIdx.z + blockIdx.z * blockDim.z;
-  printf("GPU - i = %d, j = %d, k = %d\n", i, j, k);
-}
