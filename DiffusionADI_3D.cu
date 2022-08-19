@@ -21,10 +21,11 @@ __device__ __constant__ double dev_beta;
 __global__ void test_func();
 __global__ void init_grid(double* u);
 __global__ void init_A(double* A);
-__global__ void expl_x(double* u, double* du);
+__global__ void expl_x(double* u, double* du, double dt);
 __global__ void expl_y(double* u, double* du);
 __global__ void impl_x(double* u, double* du, double* A);
 __global__ void transpose(double* u, double* uT);
+__global__ void comb_u(double* u1, double* u2, double* u3, int pom);
 
 int main(int argc, char* argv[]) {
 
@@ -47,7 +48,7 @@ int main(int argc, char* argv[]) {
   const int blocksPerGrid = localN;
 
   // Define variable for ADI scheme
-  double lambda = (tau*D)/(pow(dx,2)*2);
+  double lambda = (tau*D)/(pow(dx,2));
   double time_step = tau/2;
   double alpha = time_step*R;
   double beta = time_step*C;
@@ -125,7 +126,8 @@ int main(int argc, char* argv[]) {
       //printf("%d,", j);
       // Iterate explicitly in the x direction using kernel
       //test_func<<<grid, block>>>();
-      //expl_x<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_u[i], dev_du[i]);
+      expl_x<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_u[i], dev_du[i]);
+      
       // Transpose grid in kernel
       //transpose<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_du[i], dev_uT[i]);
       // Iterate implicitly in the y direction in kernel
@@ -268,8 +270,6 @@ __global__ void init_A(double* A) {
   } else {
     A[g_i] = 0;
   }
-
-  //printf("%lf\n", A[g_i]);
 } 
 
 __global__ void expl_x(double* u, double* du, double dt) {
@@ -287,7 +287,9 @@ __global__ void expl_x(double* u, double* du, double dt) {
 
   double react_term;
   double phi_V = dev_phi_C - 10;
+  double temp_lambda = dev_lambda/dt;
 
+  /*
   if (localu[l_i] > phi_V) {
     react_term = -dev_alpha*localu[l_i] - dev_beta;
   } else if (localu[l_i] < phi_V && localu[l_i] > dev_beta) {
@@ -295,15 +297,14 @@ __global__ void expl_x(double* u, double* du, double dt) {
   } else {
     react_term = -localu[l_i];
   }  
+  */
   
   if (l_i == 0 || l_i == (dev_N - 1)) {
     du[g_i] = 0
   } else if (l_j == 0 || l_j == (dev_N - 1)) {
     du[g_i] = 0
   } else {
-    //printf("%lf\n", dev_lambda);
-    du[g_i] = (dev_lambda*localu[l_i + 1] - 2*dev_lambda*localu[l_i] + dev_lambda*localu[l_i-1])
-      + react_term;
+    du[g_i] = (temp_lambda*localu[l_i + 1] - 2*temp_lambda*localu[l_i] + temp_lambda*localu[l_i-1]);
   }
 }
 
@@ -325,21 +326,22 @@ __global__ void expl_y(double* u, double* du, double dt) {
   double react_term;
   double phi_V = dev_phi_C - 10;
 
+  /*
   if (localu[l_i] > phi_V) {
     react_term = -dev_alpha*localu[l_i] - dev_beta;
   } else if (localu[l_i] < phi_V && localu[l_i] > dev_beta) {
     react_term = -dev_beta;
   } else {
     react_term = -localu[l_i];
-  }  
+  }
+  */
   
   if (l_i == 0 || l_i == (dev_N - 1)) {
     du[g_i] = 0;
   } else if (l_j == 0 || l_j == (dev_N - 1)) {
     du[g_i] = 0;
   } else {
-    du[g_i] = (dev_lambda*localu[l_i + 1] - 2*dev_lambda*localu[l_i] + dev_lambda*localu[l_i-1])
-      + react_term;
+    du[g_i] = (temp_lambda*localu[l_i + 1] - 2*temp_lambda*localu[l_i] + temp_lambda*localu[l_i-1]);
   }
   
 }
@@ -360,22 +362,24 @@ __global__ void expl_z(double* u, double* du, double dt) {
 
   double react_term;
   double phi_V = dev_phi_C - 10;
-
+  double temp_lambda = dev_lambda/dt;
+  
+  /*
   if (localu[l_i] > phi_V) {
     react_term = -dev_alpha*localu[l_i] - dev_beta;
   } else if (localu[l_i] < phi_V && localu[l_i] > dev_beta) {
     react_term = -dev_beta;
   } else {
     react_term = -localu[l_i];
-  }  
+  }
+  */
   
   if (l_i == 0 || l_i == (dev_N - 1)) {
     du[g_i] = 0;
   } else if (l_j == 0 || l_j == (dev_N - 1)) {
     du[g_i] = 0;
   } else {
-    du[g_i] = (dev_lambda*localu[l_i + 1] - 2*dev_lambda*localu[l_i] + dev_lambda*localu[l_i-1])
-      + react_term;
+    du[g_i] = (dev_lambda*localu[l_i + 1] - 2*dev_lambda*localu[l_i] + dev_lambda*localu[l_i-1]);
   }
   
 }
@@ -383,9 +387,21 @@ __global__ void expl_z(double* u, double* du, double dt) {
 __global__ void transpose(double* u, double* uT) {
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
-
-  //int g_i = l_i + dev_N*l_j;
+  int l_k = blockIdx.y;
 
   uT[l_j + dev_N*l_i] = u[l_i + dev_N*l_j];
 }
 
+__global__ void comb_u(double* u1, double* u2, double* u3, int pom) {
+  int l_i = threadIdx.x;
+  int l_j = blockIdx.x;
+  int l_k = blockIdx.y;
+
+  int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
+
+  if (pom == 1) {
+    u3[g_i] = u1[g_i] + u2[g_i];
+  } else {
+    u3[g_i] = u1[g_i] - u2[g_i];
+  }
+}
