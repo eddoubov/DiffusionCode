@@ -22,9 +22,10 @@ __global__ void test_func();
 __global__ void init_grid(double* u);
 __global__ void init_A(double* A);
 __global__ void expl_x(double* u, double* du, double dt);
-__global__ void expl_y(double* u, double* du);
+__global__ void expl_y(double* u, double* du, double dt);
+__global__ void expl_z(double* u, double* du, double dt);
 __global__ void impl_x(double* u, double* du, double* A);
-__global__ void transpose(double* u, double* uT);
+__global__ void transpose(double* u, double* uT, int dir);
 __global__ void comb_u(double* u1, double* u2, double* u3, int pom);
 
 int main(int argc, char* argv[]) {
@@ -44,12 +45,12 @@ int main(int argc, char* argv[]) {
   // Define grid and thread dimensions
   // Turn the following into an if statement later
   // to account for N > 1024
-  const int threadsPerBlock = localN;
-  const int blocksPerGrid = localN;
+  const int tPB2D = localN;
+  const int bPG2D = localN;
 
   // Define variable for ADI scheme
   double lambda = (tau*D)/(pow(dx,2));
-  double time_step = tau/2;
+  double time_step = tau;
   double alpha = time_step*R;
   double beta = time_step*C;
   //printf("%lf\n", lambda);
@@ -61,12 +62,13 @@ int main(int argc, char* argv[]) {
   magma_int_t err;
   
   //Declare matrices on host
-  double *u, *du, *uT, *A;
+  double *u, *du, *uT, *uN, *A;
 
   // Declare matrices for device
   double* dev_u[numStreams];
   double* dev_du[numStreams];
   double* dev_uT[numStreams];
+  double* dev_uN[numStreams];
   double* dev_A[numStreams];
 
   // Send varibales to constant memory
@@ -79,7 +81,8 @@ int main(int argc, char* argv[]) {
   // Initialize memory on host
   cudaHostAlloc((void**)&u, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
   cudaHostAlloc((void**)&du, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
-  cudaHostAlloc((void**)&uT, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&uT, localN*localN*localN*sizeof(double), cudaHostAllocDefault);  //delete later
+  cudaHostAlloc((void**)&uN, localN*localN*localN*sizeof(double), cudaHostAllocDefault);  //delete later
   err = magma_dmalloc_cpu(&A, m*m*m);
 
   if (err) {
@@ -93,6 +96,7 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void**)&dev_u[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_du[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_uT[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_uN[i], localN*localN*localN*sizeof(double));
     err = magma_dmalloc(&dev_A[i], m*m*m);
 
     if (err) {
@@ -110,23 +114,35 @@ int main(int argc, char* argv[]) {
   cudaEventCreate(&stop);
   cudaEventRecord(start, 0);  
 
-  dim3 grid(localN,localN);
+  dim3 bPG3D(localN,localN);
   //dim3 block(threadsPerBlock, threadsPerBlock, threadsPerBlock);
-  dim3 block(localN);
+  dim3 tPB3D(localN);
   
   for (int i=0; i<numStreams; ++i) {
     // Initialize grid using kernel
-    init_grid<<<grid, block, 0, stream[i]>>>(dev_u[i]);
+    init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i]);
     // Initialize implicit matrix
-    init_A<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_A[i]);
+    init_A<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_A[i]);
     magma_dgetmatrix(m, n, dev_A[i], m, A+i*localN, m, 0);
     magma_dgetrf_gpu(m, m, dev_A[i], m, piv, &info);
     
     for (int j=0; j<num_iter; ++j) {
-      //printf("%d,", j);
       // Iterate explicitly in the x direction using kernel
       //test_func<<<grid, block>>>();
-      expl_x<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_u[i], dev_du[i]);
+      add_react_term<<<bPG3D, tPB3D, 0 stream[i]>>>(dev_u[i], dev_uN[i]);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], dev_uN[i], 1);
+      expl_x<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
+      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
+      transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
+      expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
+      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uN[i], m, &info);
       
       // Transpose grid in kernel
       //transpose<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_du[i], dev_uT[i]);
@@ -264,9 +280,9 @@ __global__ void init_A(double* A) {
   } else if ((l_i == 1 && l_j == 0) || (l_i == (dev_N-2) && l_j == (dev_N-1))) {
     A[g_i] = 0;
   } else if (l_i-l_j == 0) {
-    A[g_i] = 1 + 2*dev_lambda;
+    A[g_i] = 1 + dev_lambda;
   } else if (l_i-l_j == -1 || l_i-l_j == 1) {
-    A[g_i] = -dev_lambda;
+    A[g_i] = -dev_lambda/2;
   } else {
     A[g_i] = 0;
   }
@@ -288,16 +304,6 @@ __global__ void expl_x(double* u, double* du, double dt) {
   double react_term;
   double phi_V = dev_phi_C - 10;
   double temp_lambda = dev_lambda/dt;
-
-  /*
-  if (localu[l_i] > phi_V) {
-    react_term = -dev_alpha*localu[l_i] - dev_beta;
-  } else if (localu[l_i] < phi_V && localu[l_i] > dev_beta) {
-    react_term = -dev_beta;
-  } else {
-    react_term = -localu[l_i];
-  }  
-  */
   
   if (l_i == 0 || l_i == (dev_N - 1)) {
     du[g_i] = 0
@@ -325,16 +331,7 @@ __global__ void expl_y(double* u, double* du, double dt) {
 
   double react_term;
   double phi_V = dev_phi_C - 10;
-
-  /*
-  if (localu[l_i] > phi_V) {
-    react_term = -dev_alpha*localu[l_i] - dev_beta;
-  } else if (localu[l_i] < phi_V && localu[l_i] > dev_beta) {
-    react_term = -dev_beta;
-  } else {
-    react_term = -localu[l_i];
-  }
-  */
+  double temp_lambda = dev_lambda/dt;
   
   if (l_i == 0 || l_i == (dev_N - 1)) {
     du[g_i] = 0;
@@ -343,7 +340,6 @@ __global__ void expl_y(double* u, double* du, double dt) {
   } else {
     du[g_i] = (temp_lambda*localu[l_i + 1] - 2*temp_lambda*localu[l_i] + temp_lambda*localu[l_i-1]);
   }
-  
 }
 
 __global__ void expl_z(double* u, double* du, double dt) {
@@ -364,32 +360,26 @@ __global__ void expl_z(double* u, double* du, double dt) {
   double phi_V = dev_phi_C - 10;
   double temp_lambda = dev_lambda/dt;
   
-  /*
-  if (localu[l_i] > phi_V) {
-    react_term = -dev_alpha*localu[l_i] - dev_beta;
-  } else if (localu[l_i] < phi_V && localu[l_i] > dev_beta) {
-    react_term = -dev_beta;
-  } else {
-    react_term = -localu[l_i];
-  }
-  */
-  
   if (l_i == 0 || l_i == (dev_N - 1)) {
     du[g_i] = 0;
   } else if (l_j == 0 || l_j == (dev_N - 1)) {
     du[g_i] = 0;
   } else {
-    du[g_i] = (dev_lambda*localu[l_i + 1] - 2*dev_lambda*localu[l_i] + dev_lambda*localu[l_i-1]);
+    du[g_i] = (temp_lambda*localu[l_i + 1] - 2*temp_lambda*localu[l_i] + temp_lambda*localu[l_i-1]);
   }
   
 }
 
-__global__ void transpose(double* u, double* uT) {
+__global__ void transpose(double* u, double* uT, int dir) {
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
   int l_k = blockIdx.y;
 
-  uT[l_j + dev_N*l_i] = u[l_i + dev_N*l_j];
+  if (dir == 1) {
+    uT[l_j + dev_N*l_k + dev_N*dev_N*l_i] = u[l_i + dev_N*l_j + dev_N*dev_N*l_k];
+  } else {
+    uT[l_k + dev_N*l_i + dev_N*dev_N*l_j] = u[l_i + dev_N*l_j + dev_N*dev_N*l_k];
+  }
 }
 
 __global__ void comb_u(double* u1, double* u2, double* u3, int pom) {
@@ -405,3 +395,23 @@ __global__ void comb_u(double* u1, double* u2, double* u3, int pom) {
     u3[g_i] = u1[g_i] - u2[g_i];
   }
 }
+
+__global__ void add_react_term(double* u, double* uN) {
+  int l_i = threadIdx.x;
+  int l_j = blockIdx.x;
+  int l_k = blockIdx.y;
+
+  int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
+
+  if (u[g_i] > phi_V) {
+    react_term = -dev_alpha*u[g_i] - dev_beta;
+  } else if (u[g_i] < phi_V && u[g_i] > dev_beta) {
+    react_term = -dev_beta;
+  } else {
+    react_term = -u[g_i];
+  }
+
+  uN[g_i] = react_term;
+  
+}
+
