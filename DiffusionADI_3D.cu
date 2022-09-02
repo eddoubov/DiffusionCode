@@ -12,6 +12,7 @@ const int maxThreadsPerBlock = 1024;
 
 // Store variables into constant memory
 __device__ __constant__ int dev_N;
+__device__ __constant__ double dev_tau;
 __device__ __constant__ double dev_lambda;
 __device__ __constant__ double dev_phi_C;
 __device__ __constant__ double dev_alpha;
@@ -21,6 +22,7 @@ __device__ __constant__ double dev_beta;
 __global__ void test_func();
 __global__ void init_grid(double* u);
 __global__ void init_A(double* A);
+__global__ void init_A2(double* A);
 __global__ void expl_x(double* u, double* du, double dt);
 __global__ void expl_y(double* u, double* du, double dt);
 __global__ void expl_z(double* u, double* du, double dt);
@@ -60,9 +62,10 @@ int main(int argc, char* argv[]) {
   magma_int_t m = localN;
   magma_int_t n = localN;
   magma_int_t err;
+  magma_int_t err2;
   
   //Declare matrices on host
-  double *u, *du, *uT, *uN, *A;
+  double *u, *du, *uT, *uN, *A, *A2;
 
   // Declare matrices for device
   double* dev_u[numStreams];
@@ -70,9 +73,11 @@ int main(int argc, char* argv[]) {
   double* dev_uT[numStreams];
   double* dev_uN[numStreams];
   double* dev_A[numStreams];
+  double* dev_A2[numStreams];
 
   // Send varibales to constant memory
   cudaMemcpyToSymbol(dev_N, &N, sizeof(const int));
+  cudaMemcpyToSymbol(dev_tau, &tau, sizeof(double));
   cudaMemcpyToSymbol(dev_lambda, &lambda, sizeof(double));
   cudaMemcpyToSymbol(dev_phi_C, &phi_C, sizeof(double));
   cudaMemcpyToSymbol(dev_alpha, &alpha, sizeof(double));
@@ -83,11 +88,17 @@ int main(int argc, char* argv[]) {
   cudaHostAlloc((void**)&du, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
   cudaHostAlloc((void**)&uT, localN*localN*localN*sizeof(double), cudaHostAllocDefault);  //delete later
   cudaHostAlloc((void**)&uN, localN*localN*localN*sizeof(double), cudaHostAllocDefault);  //delete later
-  err = magma_dmalloc_cpu(&A, m*m*m);
+  err = magma_dmalloc_cpu(&A, m*m);
+  err2 = magma_dmalloc_cpu(&A2, m*m);
 
   if (err) {
-    printf("Issue in memory allocation cpu\n");
+    printf("Issue in memory allocation cpu: A\n");
     exit(1);
+  }
+
+  if (err2) {
+    printf("Issue in memory allocation cpu: A2\n");
+    exit(1)
   }
 
   // Initialize memory on device
@@ -97,8 +108,12 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void**)&dev_du[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_uT[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_uN[i], localN*localN*localN*sizeof(double));
-    err = magma_dmalloc(&dev_A[i], m*m*m);
-
+    err = magma_dmalloc(&dev_A[i], m*m);
+    if (err) {
+      printf("Issue in memory allocation gpu\n");
+      exit(1);
+    }
+    err = magma_dmalloc(&dev_A2[i], m*m);
     if (err) {
       printf("Issue in memory allocation gpu\n");
       exit(1);
@@ -129,7 +144,7 @@ int main(int argc, char* argv[]) {
     for (int j=0; j<num_iter; ++j) {
       // Iterate explicitly in the x direction using kernel
       //test_func<<<grid, block>>>();
-      add_react_term<<<bPG3D, tPB3D, 0 stream[i]>>>(dev_u[i], dev_uN[i]);
+      add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], dev_uN[i], 1);
       expl_x<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
@@ -140,9 +155,14 @@ int main(int argc, char* argv[]) {
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
-      expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
+      expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uN[i], m, &info);
+      expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
+      add_react_term<<<bPG3D, tPB3D, 0 stream[i]>>>(dev_u[i], dev_uT[i], 1);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 0);
+      
       
       // Transpose grid in kernel
       //transpose<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_du[i], dev_uT[i]);
@@ -286,7 +306,26 @@ __global__ void init_A(double* A) {
   } else {
     A[g_i] = 0;
   }
-} 
+}
+
+__global__ void init_A2(double* A) {
+  int l_i = threadIdx.x;
+  int l_j = blockIdx.x;
+
+  int g_i = l_i + dev_N*l_j;
+  
+  if ((l_i == 0 && l_j == 0) || (l_i == dev_N-1 && l_j == dev_N-1)) {
+    A[g_i] = 1;
+  } else if ((l_i == 1 && l_j == 0) || (l_i == (dev_N-2) && l_j == (dev_N-1))) {
+    A[g_i] = 0;
+  } else if (l_i-l_j == 0) {
+    A[g_i] = 1 + dev_lambda;
+  } else if (l_i-l_j == -1 || l_i-l_j == 1) {
+    A[g_i] = -dev_lambda/2;
+  } else {
+    A[g_i] = 0;
+  }
+}
 
 __global__ void expl_x(double* u, double* du, double dt) {
   __shared__ double localu[maxThreadsPerBlock];
@@ -396,19 +435,27 @@ __global__ void comb_u(double* u1, double* u2, double* u3, int pom) {
   }
 }
 
-__global__ void add_react_term(double* u, double* uN) {
+__global__ void add_react_term(double* u, double* uN, int mod_bool) {
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
   int l_k = blockIdx.y;
 
   int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
 
-  if (u[g_i] > phi_V) {
-    react_term = -dev_alpha*u[g_i] - dev_beta;
-  } else if (u[g_i] < phi_V && u[g_i] > dev_beta) {
-    react_term = -dev_beta;
+  if (mod_bool == 1) {
+    if (u[g_i] > phi_V) {
+      react_term = -dev_alpha*u[g_i]/2;
+     else {
+      react_term = 0;
+    }
   } else {
-    react_term = -u[g_i];
+    if (u[g_i] > phi_V) {
+      react_term = -dev_alpha*u[g_i] - dev_beta;
+    } else if (u[g_i] < phi_V && u[g_i] > dev_beta) {
+      react_term = -dev_beta;
+    } else {
+      react_term = -u[g_i];
+    }
   }
 
   uN[g_i] = react_term;
