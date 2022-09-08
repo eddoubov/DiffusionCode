@@ -19,9 +19,8 @@ __device__ __constant__ double dev_beta;
 
 //
 __global__ void test_func();
-__global__ void init_grid(double* u);
+__global__ void init_grid(double* u, int update);
 __global__ void init_A(double* A);
-__global__ void init_A2(double* A);
 __global__ void expl_x(double* u, double* du, double dt);
 __global__ void expl_y(double* u, double* du, double dt);
 __global__ void expl_z(double* u, double* du, double dt);
@@ -57,14 +56,13 @@ int main(int argc, char* argv[]) {
   printf("%lf\n", lambda);
   
   magma_init();
-  magma_int_t *piv, *piv2, info, info2;
+  magma_int_t *piv, info;
   magma_int_t m = localN;
-  magma_int_t n = localN;+
+  magma_int_t n = localN;
   magma_int_t err;
-  magma_int_t err2;
   
   //Declare matrices on host
-  double *u, *du, *uT, *uN, *A, *A2;
+  double *u, *du, *uT, *uN, *A;
 
   // Declare matrices for device
   double* dev_u[numStreams];
@@ -72,7 +70,6 @@ int main(int argc, char* argv[]) {
   double* dev_uT[numStreams];
   double* dev_uN[numStreams];
   double* dev_A[numStreams];
-  double* dev_A2[numStreams];
 
   // Send varibales to constant memory
   cudaMemcpyToSymbol(dev_N, &N, sizeof(const int));
@@ -87,15 +84,9 @@ int main(int argc, char* argv[]) {
   cudaHostAlloc((void**)&uT, localN*localN*localN*sizeof(double), cudaHostAllocDefault);  //delete later
   cudaHostAlloc((void**)&uN, localN*localN*localN*sizeof(double), cudaHostAllocDefault);  //delete later
   err = magma_dmalloc_cpu(&A, m*m);
-  err2 = magma_dmalloc_cpu(&A2, m*m);
 
   if (err) {
     printf("Issue in memory allocation cpu: A\n");
-    exit(1);
-  }
-
-  if (err2) {
-    printf("Issue in memory allocation cpu: A2\n");
     exit(1);
   }
 
@@ -111,17 +102,11 @@ int main(int argc, char* argv[]) {
       printf("Issue in memory allocation gpu\n");
       exit(1);
     }
-    err = magma_dmalloc(&dev_A2[i], m*m);
-    if (err) {
-      printf("Issue in memory allocation gpu\n");
-      exit(1);
-    }
     
     cudaStreamCreate( &(stream[i]) );
   }
 
   piv = (magma_int_t*)malloc(m*sizeof(magma_int_t));
-  piv2 = (magma_int_t*)malloc(m*sizeof(magma_int_t));  
 
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
@@ -134,15 +119,11 @@ int main(int argc, char* argv[]) {
   
   for (int i=0; i<numStreams; ++i) {
     // Initialize grid using kernel
-    init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i]);
+    init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 0);
     // Initialize implicit matrix
     init_A<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_A[i]);
-    init_A2<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_A2[i]);
     magma_dgetrf_gpu(m, m, dev_A[i], m, piv, &info);
     magma_dgetmatrix(m, n, dev_A[i], m, A+i*localN, m, 0);
-    
-    magma_dgetrf_gpu(m, m, dev_A2[i], m, piv2, &info2);
-    magma_dgetmatrix(m, n, dev_A2[i], m, A2+i*localN, m, 0);
     
     for (int j=0; j<num_iter; ++j) {
       // Iterate explicitly in the x direction using kernel
@@ -170,6 +151,7 @@ int main(int argc, char* argv[]) {
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u[i], 0);
+      init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
       
       // Transpose grid in kernel
       //transpose<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_du[i], dev_uT[i]);
@@ -278,7 +260,7 @@ __global__ void test_func() {
   
 }
 
-__global__ void init_grid(double* u) {
+__global__ void init_grid(double* u, int update) {
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
   int l_k = blockIdx.y;
@@ -291,7 +273,7 @@ __global__ void init_grid(double* u) {
   } else if (l_i == dev_N-1 || l_j == dev_N-1 || l_k == dev_N-1) {
     //printf("right_corner\n");
     u[g_i] = dev_phi_C;
-  } else {
+  } else if (update == 0) {
     u[g_i] = 0;
   }
 }
@@ -312,25 +294,6 @@ __global__ void init_A(double* A) {
     A[g_i] = -dev_lambda/2;
   } else {
     A[g_i] = 0;
-  }
-}
-
-__global__ void init_A2(double* A2) {
-  int l_i = threadIdx.x;
-  int l_j = blockIdx.x;
-
-  int g_i = l_i + dev_N*l_j;
-  
-  if ((l_i == 0 && l_j == 0) || (l_i == dev_N-1 && l_j == dev_N-1)) {
-    A2[g_i] = 1;
-  } else if ((l_i == 1 && l_j == 0) || (l_i == (dev_N-2) && l_j == (dev_N-1))) {
-    A2[g_i] = 0;
-  } else if (l_i-l_j == 0) {
-    A2[g_i] = 1 + dev_lambda + dev_alpha/2;
-  } else if (l_i-l_j == -1 || l_i-l_j == 1) {
-    A2[g_i] = -dev_lambda/2;
-  } else {
-    A2[g_i] = 0;
   }
 }
 
@@ -356,7 +319,7 @@ __global__ void expl_x(double* u, double* du, double dt) {
   } else if (l_k == 0 || l_k == (dev_N - 1)) {
     du[g_i] = 0;
   } else {
-    du[g_i] = (temp_lambda*localu[l_i + 1] - 2*temp_lambda*localu[l_i] + temp_lambda*localu[l_i-1]);
+    du[g_i] = (temp_lambda*localu[l_i+1] - 2*temp_lambda*localu[l_i] + temp_lambda*localu[l_i-1]);
   }
 }
 
@@ -384,7 +347,7 @@ __global__ void expl_y(double* u, double* du, double dt) {
   } else if (l_k == 0 || l_k == (dev_N - 1)) {
     du[g_i] = 0;
   } else {
-    du[g_i] = (temp_lambda*localu[l_i + 1] - 2*temp_lambda*localu[l_i] + temp_lambda*localu[l_i-1]);
+    du[g_i] = (temp_lambda*localu[l_i+1] - 2*temp_lambda*localu[l_i] + temp_lambda*localu[l_i-1]);
   }
 }
 
@@ -411,7 +374,7 @@ __global__ void expl_z(double* u, double* du, double dt) {
   } else if (l_k == 0 || l_k == (dev_N - 1)) {
     du[g_i] = 0;
   } else {
-    du[g_i] = (temp_lambda*localu[l_i + 1] - 2*temp_lambda*localu[l_i] + temp_lambda*localu[l_i-1]);
+    du[g_i] = (temp_lambda*localu[l_i+1] - 2*temp_lambda*localu[l_i] + temp_lambda*localu[l_i-1]);
   }
   
 }
