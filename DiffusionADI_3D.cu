@@ -423,9 +423,9 @@ __global__ void add_react_term(double* u, double* uN, int mod_bool) {
     }
   } else {
     if (u[g_i] > phi_V) {
-      react_term = -dev_alpha*u[g_i] - dev_beta;
+      react_term = -dev_alpha*u[g_i]/2 - dev_beta/2;
     } else if (u[g_i] < phi_V && u[g_i] > dev_beta) {
-      react_term = -dev_beta;
+      react_term = -dev_beta/2;
     } else {
       react_term = -u[g_i];
     }
