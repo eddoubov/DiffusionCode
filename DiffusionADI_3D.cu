@@ -184,22 +184,22 @@ int main(int argc, char* argv[]) {
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u6[i]);  //copy for debugging
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u6[i]);  //copy for debugging
-      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uN[i], m, &info);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u7[i]);  //copy for debugging
+      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uN[i], m, &info);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u9[i]);  //copy for debugging
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u9[i]);  //copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u10[i]);  //copy for debugging
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u[i], 0);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
+      //copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
       init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
       
       // Transpose grid in kernel
@@ -222,6 +222,16 @@ int main(int argc, char* argv[]) {
   for (int i=0; i<numStreams; ++i) {
     cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
     cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u1+i*localN, dev_u1[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u2+i*localN, dev_u2[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u3+i*localN, dev_u3[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u4+i*localN, dev_u4[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u5+i*localN, dev_u5[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u6+i*localN, dev_u6[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u7+i*localN, dev_u7[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u8+i*localN, dev_u8[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u9+i*localN, dev_u9[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(u10+i*localN, dev_u10[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
   }
 
   for (int i=0; i<numStreams; ++i)
@@ -235,7 +245,20 @@ int main(int argc, char* argv[]) {
     cudaFree(dev_du[i]);
     cudaFree(dev_uT[i]);
     cudaFree(dev_uN[i]);
+
+    cudaFree(dev_u1[i]);
+    cudaFree(dev_u2[i]);
+    cudaFree(dev_u3[i]);
+    cudaFree(dev_u4[i]);
+    cudaFree(dev_u5[i]);
+    cudaFree(dev_u6[i]);
+    cudaFree(dev_u7[i]);
+    cudaFree(dev_u8[i]);
+    cudaFree(dev_u9[i]);
+    cudaFree(dev_u10[i]);
   }
+
+  printf("cuda_test: %lf\n", u1[17]);
   
   for (int i = 0; i<numStreams; ++i)
     cudaStreamDestroy(stream[i]);
@@ -252,14 +275,14 @@ int main(int argc, char* argv[]) {
     sprintf(fn2, "u_files/Test_u_%d.csv", j);
     sprintf(fn3, "u1_files/Test_u1_%d.csv", j);
     sprintf(fn4, "u2_files/Test_u2_%d.csv", j);
-    sprintf(fn3, "u3_files/Test_u1_%d.csv", j);
-    sprintf(fn4, "u4_files/Test_u2_%d.csv", j);
-    sprintf(fn3, "u5_files/Test_u1_%d.csv", j);
-    sprintf(fn4, "u6_files/Test_u2_%d.csv", j);
-    sprintf(fn3, "u7_files/Test_u1_%d.csv", j);
-    sprintf(fn4, "u8_files/Test_u2_%d.csv", j);
-    sprintf(fn3, "u9_files/Test_u1_%d.csv", j);
-    sprintf(fn4, "u10_files/Test_u10_%d.csv", j);
+    sprintf(fn5, "u3_files/Test_u3_%d.csv", j);
+    sprintf(fn6, "u4_files/Test_u4_%d.csv", j);
+    sprintf(fn7, "u5_files/Test_u5_%d.csv", j);
+    sprintf(fn8, "u6_files/Test_u6_%d.csv", j);
+    sprintf(fn9, "u7_files/Test_u7_%d.csv", j);
+    sprintf(fn10, "u8_files/Test_u8_%d.csv", j);
+    sprintf(fn11, "u9_files/Test_u9_%d.csv", j);
+    sprintf(fn12, "u10_files/Test_u10_%d.csv", j);
 
     FILE *fileid = fopen(fn1, "w");
 
@@ -290,26 +313,181 @@ int main(int argc, char* argv[]) {
     }
 
     fclose(fileid2);
+    
+    FILE *fileid3 = fopen(fn3, "w");
+  
+    for (int i=0; i<(N*N); ++i) {
+      //printf("%d\n", i);
+      //printf("%lf\n", u1[i+offset]);
+      if (i % N == 0) {
+	fprintf(fileid3, "%lf", u1[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid3, ",%lf", u1[i+offset]);
+      } else {
+	fprintf(fileid3, ",%lf\n", u1[i+offset]);
+      }
+    }
 
+    fclose(fileid3);
+
+    
+    FILE *fileid4 = fopen(fn4, "w");
+  
+    for (int i=0; i<(N*N); ++i) {
+      if (i % N == 0) {
+	fprintf(fileid4, "%lf", u2[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid4, ",%lf", u2[i+offset]);
+      } else {
+	fprintf(fileid4, ",%lf\n", u2[i+offset]);
+      }
+    }
+
+    fclose(fileid4);
+
+    FILE *fileid5 = fopen(fn5, "w");
+  
+    for (int i=0; i<(N*N); ++i) {
+      if (i % N == 0) {
+	fprintf(fileid5, "%lf", u3[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid5, ",%lf", u3[i+offset]);
+      } else {
+	fprintf(fileid5, ",%lf\n", u3[i+offset]);
+      }
+    }
+
+    fclose(fileid5);
+
+    FILE *fileid6 = fopen(fn6, "w");
+  
+    for (int i=0; i<(N*N); ++i) {
+      if (i % N == 0) {
+	fprintf(fileid6, "%lf", u4[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid6, ",%lf", u4[i+offset]);
+      } else {
+	fprintf(fileid6, ",%lf\n", u4[i+offset]);
+      }
+    }
+
+    fclose(fileid6);
+
+    FILE *fileid7 = fopen(fn7, "w");
+  
+    for (int i=0; i<(N*N); ++i) {
+      if (i % N == 0) {
+	fprintf(fileid7, "%lf", u5[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid7, ",%lf", u5[i+offset]);
+      } else {
+	fprintf(fileid7, ",%lf\n", u5[i+offset]);
+      }
+    }
+
+    fclose(fileid7);
+
+    FILE *fileid8 = fopen(fn8, "w");
+  
+    for (int i=0; i<(N*N); ++i) {
+      if (i % N == 0) {
+	fprintf(fileid8, "%lf", u6[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid8, ",%lf", u6[i+offset]);
+      } else {
+	fprintf(fileid8, ",%lf\n", u6[i+offset]);
+      }
+    }
+
+    fclose(fileid8);
+
+    FILE *fileid9 = fopen(fn9, "w");
+  
+    for (int i=0; i<(N*N); ++i) {
+      if (i % N == 0) {
+	fprintf(fileid9, "%lf", u7[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid9, ",%lf", u7[i+offset]);
+      } else {
+	fprintf(fileid9, ",%lf\n", u7[i+offset]);
+      }
+    }
+
+    fclose(fileid9);
+
+    FILE *fileid10 = fopen(fn10, "w");
+  
+    for (int i=0; i<(N*N); ++i) {
+      if (i % N == 0) {
+	fprintf(fileid10, "%lf", u8[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid10, ",%lf", u8[i+offset]);
+      } else {
+	fprintf(fileid10, ",%lf\n", u8[i+offset]);
+      }
+    }
+
+    fclose(fileid10);
+
+    fclose(fileid6);
+
+    FILE *fileid11 = fopen(fn11, "w");
+  
+    for (int i=0; i<(N*N); ++i) {
+      if (i % N == 0) {
+	fprintf(fileid11, "%lf", u9[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid11, ",%lf", u9[i+offset]);
+      } else {
+	fprintf(fileid11, ",%lf\n", u9[i+offset]);
+      }
+    }
+
+    fclose(fileid11);
+
+    FILE *fileid12 = fopen(fn12, "w");
+  
+    for (int i=0; i<(N*N); ++i) {
+      if (i % N == 0) {
+	fprintf(fileid12, "%lf", u10[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid12, ",%lf", u10[i+offset]);
+      } else {
+	fprintf(fileid12, ",%lf\n", u10[i+offset]);
+      }
+    }
+
+    fclose(fileid12);
   }
 
-  FILE *fileid3 = fopen("Test_A.csv", "w");
+  FILE *fileid13 = fopen("Test_A.csv", "w");
   
   for (int i=0; i<(N*N); ++i)
     if (i % N == 0) {
-      fprintf(fileid3, "%lf", A[i]);
+      fprintf(fileid13, "%lf", A[i]);
     } else if (i % N < (N-1)) {
-      fprintf(fileid3, ",%lf", A[i]);
+      fprintf(fileid13, ",%lf", A[i]);
     } else {
-      fprintf(fileid3, ",%lf\n", A[i]);
+      fprintf(fileid13, ",%lf\n", A[i]);
     }
 
-  fclose(fileid3);
+  fclose(fileid13);
   
   cudaFreeHost(u);
   cudaFreeHost(du);
   cudaFreeHost(uN);
   cudaFreeHost(uT);
+
+  cudaFreeHost(u1);
+  cudaFreeHost(u2);
+  cudaFreeHost(u3);
+  cudaFreeHost(u4);
+  cudaFreeHost(u5);
+  cudaFreeHost(u6);
+  cudaFreeHost(u7);
+  cudaFreeHost(u8);
+  cudaFreeHost(u9);
+  cudaFreeHost(u10);
 
   printf("Kernel Time: %gms\n", elapsedTime);
   
