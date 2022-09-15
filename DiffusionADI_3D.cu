@@ -429,8 +429,6 @@ int main(int argc, char* argv[]) {
 
     fclose(fileid10);
 
-    fclose(fileid6);
-
     FILE *fileid11 = fopen(fn11, "w");
   
     for (int i=0; i<(N*N); ++i) {
