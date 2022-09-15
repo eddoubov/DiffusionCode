@@ -27,6 +27,7 @@ __global__ void expl_z(double* u, double* du, double dt);
 __global__ void transpose(double* u, double* uT, int dir);
 __global__ void comb_u(double* u1, double* u2, double* u3, int pom);
 __global__ void add_react_term(double* u, double* uN, int mod_bool);
+__global__ void copy(double* u1, double* u2);
 
 int main(int argc, char* argv[]) {
 
@@ -63,7 +64,7 @@ int main(int argc, char* argv[]) {
   magma_int_t err;
   
   //Declare matrices on host
-  double *u, *du, *uT, *uN, *A;
+  double *u, *du, *uT, *uN, *A, *u1, *u2, *u3, *u4, *u5, *u6, *u7, *u8, *u9, *u10;
 
   // Declare matrices for device
   double* dev_u[numStreams];
@@ -71,6 +72,17 @@ int main(int argc, char* argv[]) {
   double* dev_uT[numStreams];
   double* dev_uN[numStreams];
   double* dev_A[numStreams];
+
+  double* dev_u1[numStreams];
+  double* dev_u2[numStreams];
+  double* dev_u3[numStreams];
+  double* dev_u4[numStreams];
+  double* dev_u5[numStreams];
+  double* dev_u6[numStreams];
+  double* dev_u7[numStreams];
+  double* dev_u8[numStreams];
+  double* dev_u9[numStreams];
+  double* dev_u10[numStreams];
 
   // Send varibales to constant memory
   cudaMemcpyToSymbol(dev_N, &N, sizeof(const int));
@@ -84,6 +96,18 @@ int main(int argc, char* argv[]) {
   cudaHostAlloc((void**)&du, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
   cudaHostAlloc((void**)&uT, localN*localN*localN*sizeof(double), cudaHostAllocDefault);  //delete later
   cudaHostAlloc((void**)&uN, localN*localN*localN*sizeof(double), cudaHostAllocDefault);  //delete later
+
+  cudaHostAlloc((void**)&u1, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&u2, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&u3, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&u4, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&u5, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&u6, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&u7, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&u8, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&u9, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&u10, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
+  
   err = magma_dmalloc_cpu(&A, m*m);
 
   if (err) {
@@ -98,6 +122,18 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void**)&dev_du[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_uT[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_uN[i], localN*localN*localN*sizeof(double));
+
+    cudaMalloc((void**)&dev_u1[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_u2[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_u3[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_u4[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_u5[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_u6[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_u7[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_u8[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_u9[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_u10[i], localN*localN*localN*sizeof(double));
+    
     err = magma_dmalloc(&dev_A[i], m*m);
     if (err) {
       printf("Issue in memory allocation gpu\n");
@@ -132,27 +168,38 @@ int main(int argc, char* argv[]) {
       //test_func<<<grid, block>>>();
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], dev_uN[i], 1);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u1[i]);  // copy for debugging
       expl_x<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u2[i]);  // copy for debugging
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u3[i]);  //copy for debugging
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u4[i]);  //copy for debugging
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u6[i]);  //copy for debugging
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uN[i], m, &info);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u7[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u9[i]);  //copy for debugging
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u[i], 0);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
       init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
       
       // Transpose grid in kernel
@@ -195,7 +242,7 @@ int main(int argc, char* argv[]) {
 
   //dgetri(m, A, n, piv
   
-  char fn1[25], fn2[23];
+  char fn1[25], fn2[23], fn3[25], fn4[25], fn5[25], fn6[25], fn7[25], fn8[25], fn9[25], fn10[25], fn11[25], fn12[27];
 
   for (int j=0; j<N; ++j) {
 
@@ -203,6 +250,16 @@ int main(int argc, char* argv[]) {
 
     sprintf(fn1, "du_files/Test_du_%d.csv", j);
     sprintf(fn2, "u_files/Test_u_%d.csv", j);
+    sprintf(fn3, "u1_files/Test_u1_%d.csv", j);
+    sprintf(fn4, "u2_files/Test_u2_%d.csv", j);
+    sprintf(fn3, "u3_files/Test_u1_%d.csv", j);
+    sprintf(fn4, "u4_files/Test_u2_%d.csv", j);
+    sprintf(fn3, "u5_files/Test_u1_%d.csv", j);
+    sprintf(fn4, "u6_files/Test_u2_%d.csv", j);
+    sprintf(fn3, "u7_files/Test_u1_%d.csv", j);
+    sprintf(fn4, "u8_files/Test_u2_%d.csv", j);
+    sprintf(fn3, "u9_files/Test_u1_%d.csv", j);
+    sprintf(fn4, "u10_files/Test_u10_%d.csv", j);
 
     FILE *fileid = fopen(fn1, "w");
 
@@ -450,5 +507,15 @@ __global__ void add_react_term(double* u, double* uN, int mod_bool) {
     uN[g_i] = react_term;
   }
   
+}
+
+__global__ void copy(double* u1, double* u2) {
+  int l_i = threadIdx.x;
+  int l_j = blockIdx.x;
+  int l_k = blockIdx.y;
+
+  int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
+
+  u2[g_i] = u1[g_i]; 
 }
 
