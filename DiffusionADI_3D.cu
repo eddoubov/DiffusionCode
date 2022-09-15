@@ -54,6 +54,7 @@ int main(int argc, char* argv[]) {
   double alpha = time_step*R;
   double beta = time_step*C;
   printf("%lf\n", lambda);
+  printf("%lf\n", alpha);
   
   magma_init();
   magma_int_t *piv, info;
@@ -122,7 +123,8 @@ int main(int argc, char* argv[]) {
     init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 0);
     // Initialize implicit matrix
     init_A<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_A[i]);
-    magma_dgetrf_gpu(m, m, dev_A[i], m, piv, &info);
+
+    magma_dgetrf_gpu(m, m, dev_A[i], m, piv, &info); 
     magma_dgetmatrix(m, n, dev_A[i], m, A+i*localN, m, 0);
     
     for (int j=0; j<num_iter; ++j) {
@@ -166,6 +168,7 @@ int main(int argc, char* argv[]) {
   cudaEventRecord(stop,0);
   cudaEventSynchronize(stop);
 
+  
   float elapsedTime;
   cudaEventElapsedTime(&elapsedTime, start, stop);
   
@@ -181,13 +184,17 @@ int main(int argc, char* argv[]) {
   cudaEventDestroy(stop);
   
   for (int i = 0; i<numStreams; ++i) {
-    cudaFree(dev_u);
-    cudaFree(dev_du);
+    cudaFree(dev_u[i]);
+    cudaFree(dev_du[i]);
+    cudaFree(dev_uT[i]);
+    cudaFree(dev_uN[i]);
   }
   
   for (int i = 0; i<numStreams; ++i)
     cudaStreamDestroy(stream[i]);
 
+  //dgetri(m, A, n, piv
+  
   char fn1[25], fn2[23];
 
   for (int j=0; j<N; ++j) {
@@ -244,6 +251,8 @@ int main(int argc, char* argv[]) {
   
   cudaFreeHost(u);
   cudaFreeHost(du);
+  cudaFreeHost(uN);
+  cudaFreeHost(uT);
 
   printf("Kernel Time: %gms\n", elapsedTime);
   
