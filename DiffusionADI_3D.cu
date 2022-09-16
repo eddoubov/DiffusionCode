@@ -178,9 +178,9 @@ int main(int argc, char* argv[]) {
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u4[i]);  //copy for debugging
-      transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
-      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
-      transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
+      //transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
+      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uN[i], m, &info);
+      //transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
@@ -188,7 +188,9 @@ int main(int argc, char* argv[]) {
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u7[i]);  //copy for debugging
-      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uN[i], m, &info);
+      transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
+      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
+      transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 0);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
@@ -196,9 +198,9 @@ int main(int argc, char* argv[]) {
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u10[i]);  //copy for debugging
-      transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
+      transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
-      transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u[i], 0);
+      transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u[i], 1);
       //copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
       init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
       
