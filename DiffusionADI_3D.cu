@@ -160,46 +160,45 @@ int main(int argc, char* argv[]) {
     // Initialize implicit matrix
     init_A<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_A[i]);
 
-    magma_dgetrf_gpu(m, m, dev_A[i], m, piv, &info); 
     magma_dgetmatrix(m, n, dev_A[i], m, A+i*localN, m, 0);
+    magma_dgetrf_gpu(m, m, dev_A[i], m, piv, &info); 
     
     for (int j=0; j<num_iter; ++j) {
       // Iterate explicitly in the x direction using kernel
       //test_func<<<grid, block>>>();
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u1[i]);  // copy for debugging
       expl_x<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u2[i]);  // copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u1[i]);  // copy for debugging
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u3[i]);  //copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u2[i]);  //copy for debugging
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u4[i]);  //copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u3[i]);  //copy for debugging
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uN[i], m, &info);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u4[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u6[i]);  //copy for debugging
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u7[i]);  //copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u6[i]);  //copy for debugging
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 0);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u7[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u9[i]);  //copy for debugging
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u10[i]);  //copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u9[i]);  //copy for debugging
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
       transpose<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u[i], 1);
-      //copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
+      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
       init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
       
       // Transpose grid in kernel
