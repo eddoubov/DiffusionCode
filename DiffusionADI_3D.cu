@@ -621,14 +621,22 @@ __global__ void expl_z(double* u, double* du, double dt) {
 }
 
 __global__ void transpose(double* u, double* uT, int dir) {
+  __shared__ double localu[maxThreadsPerBlock];
+  
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
   int l_k = blockIdx.y;
 
+  int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
+
+  localu[l_i] = u[g_i];
+
+  __syncthreads();
+  
   if (dir == 1) {
-    uT[l_j + dev_N*l_k + dev_N*dev_N*l_i] = u[l_i + dev_N*l_j + dev_N*dev_N*l_k];
+    uT[l_j + dev_N*l_k + dev_N*dev_N*l_i] = localu[l_i];
   } else {
-    uT[l_k + dev_N*l_i + dev_N*dev_N*l_j] = u[l_i + dev_N*l_j + dev_N*dev_N*l_k];
+    uT[l_k + dev_N*l_i + dev_N*dev_N*l_j] = localu[l_i];
   }
 }
 
