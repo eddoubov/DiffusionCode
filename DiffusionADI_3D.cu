@@ -9,6 +9,8 @@
 
 const int numStreams = 1;
 const int maxThreadsPerBlock = 1024;
+const int TILE_DIM = 32;
+const int BLOCK_ROWS = 8;
 
 // Store variables into constant memory
 __device__ __constant__ int dev_N;
@@ -153,6 +155,9 @@ int main(int argc, char* argv[]) {
   dim3 bPG3D(localN,localN);
   //dim3 block(threadsPerBlock, threadsPerBlock, threadsPerBlock);
   dim3 tPB3D(localN);
+  dim3 bPG2D_trans(localN/TILE_DIM, localN/TILE_DIM, localN);
+  dim3 tPB2D_trans(TILE_DIM, BLOCK_ROWS, 1);
+  dim3 temp(10,10,1);
   
   for (int i=0; i<numStreams; ++i) {
     // Initialize grid using kernel
@@ -184,20 +189,20 @@ int main(int argc, char* argv[]) {
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
-      transpose<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
+      transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u6[i]);  //copy for debugging
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u7[i]);  //copy for debugging
-      transpose<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
+      transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
-      transpose<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
+      transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u9[i]);  //copy for debugging
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
-      transpose<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_uT[i], dev_u[i], 1);
+      transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u[i], 1);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
       init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
       
@@ -621,23 +626,44 @@ __global__ void expl_z(double* u, double* du, double dt) {
 }
 
 __global__ void transpose(double* u, double* uT, int dir) {
-  //__shared__ double localu[maxThreadsPerBlock];
-  
+  __shared__ double localu[TILE_DIM][TILE_DIM];
+
   if (dir == 1) {
+
+    int x = blockIdx.x * TILE_DIM + threadIdx.x;
+    int y = blockIdx.y * TILE_DIM + threadIdx.y;
+    int z = blockIdx.z * dev_N * dev_N;
+    int width = gridDim.x * TILE_DIM;
+
+    printf("%d\n", gridDim.x);
+    
+    for (int j = 0; j < dev_N; j += BLOCK_ROWS) {
+      
+      localu[threadIdx.y+j][threadIdx.x] = u[(y+j)*width + x + z*dev_N*dev_N];
+      
+    }
+    
+    __syncthreads();
+
+    x = blockIdx.y * TILE_DIM + threadIdx.x;
+    y = blockIdx.x * TILE_DIM + threadIdx.y;
+
+    for (int j = 0; j < dev_N; j += BLOCK_ROWS) {
+      
+      uT[(y+j)*width + x] = localu[threadIdx.x][threadIdx.y + j];
+      
+    }
+
+  } else {
 
     int l_i = threadIdx.x;
     int l_j = blockIdx.x;
+    int l_k = blockIdx.y;
 
-    for (int l_k = 0; l_k < dev_N; ++l_k) {
-      
-      int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
-      int g_iT = l_j + dev_N*l_i + dev_N*dev_N*l_k;
+    int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
 
-      uT[g_iT] = u[g_i];
-    }
-    //__syncthreads();
-  } else {
-
+    uT[g_i] = u[g_i];
+    /**
     int l_i = threadIdx.x;
     int l_k = blockIdx.x;
 
@@ -648,6 +674,7 @@ __global__ void transpose(double* u, double* uT, int dir) {
 
       uT[g_iT] = u[g_i];
     }
+    **/
   }
 }
 
