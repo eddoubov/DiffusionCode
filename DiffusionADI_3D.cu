@@ -157,7 +157,6 @@ int main(int argc, char* argv[]) {
   dim3 tPB3D(localN);
   dim3 bPG2D_trans(localN/TILE_DIM, localN/TILE_DIM, localN);
   dim3 tPB2D_trans(TILE_DIM, BLOCK_ROWS, 1);
-  dim3 temp(10,10,1);
   
   for (int i=0; i<numStreams; ++i) {
     // Initialize grid using kernel
