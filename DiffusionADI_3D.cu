@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
   double* dev_du[numStreams];
   double* dev_uT[numStreams];
   double* dev_uN[numStreams];
-  double* dev_A[numStreams];
+  magmaDouble_ptr dev_A;
 
   double* dev_u1[numStreams];
   double* dev_u2[numStreams];
@@ -136,7 +136,7 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void**)&dev_u9[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_u10[i], localN*localN*localN*sizeof(double));
     
-    err = magma_dmalloc(&dev_A[i], m*m);
+    err = magma_dmalloc(&dev_A, m*m);
     if (err) {
       printf("Issue in memory allocation gpu\n");
       exit(1);
@@ -147,24 +147,26 @@ int main(int argc, char* argv[]) {
 
   piv = (magma_int_t*)malloc(m*sizeof(magma_int_t));
 
-  for (j=0; j<localN; ++j) {
-    for (i=0; i<localN; ++i) {
-      index = i + j*localN
-      if ((i == 0 && j == 0) || (i == dev_N-1 && j == dev_N-1)) {
-	A[index] = 1;
+  int ind;
+  
+  for (int j=0; j<localN; ++j) {
+    for (int i=0; i<localN; ++i) {
+      ind = i + j*localN;
+      if ((i == 0 && j == 0) || (i == localN-1 && j == localN-1)) {
+	A[ind] = 1;
       } else if ((i == 1 && j == 0) || (i == (localN-2) && j == (localN-1))) {
-	A[index] = 0;
+	A[ind] = 0;
       } else if (i-j == 0) {
-	A[index] = 1 + lambda;
+	A[ind] = 1 + lambda;
       } else if (i-j == -1 || i-j == 1) {
-	A[index] = -lambda/2;
+	A[ind] = -lambda/2;
       } else {
-	A[index] = 0;
+	A[ind] = 0;
       }
     }
   }
 
-  magma_dsetmatrix(m, m, A, m, dev_A, m);
+  magma_dsetmatrix(m, m, A, m, dev_A, m, 0);
   
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
@@ -181,10 +183,10 @@ int main(int argc, char* argv[]) {
     // Initialize grid using kernel
     init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 0);
     // Initialize implicit matrix
-    init_A<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_A[i]);
+    //init_A<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_A[i]);
 
     //magma_dgetmatrix(m, n, dev_A[i], m, A+i*localN, m, 0);
-    magma_dgetrf_gpu(m, m, dev_A[i], m, piv, &info); 
+    magma_dgetrf_gpu(m, m, dev_A, m, piv, &info); 
     
     for (int j=0; j<num_iter; ++j) {
       // Iterate explicitly in the x direction using kernel
@@ -200,7 +202,7 @@ int main(int argc, char* argv[]) {
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u3[i]);  //copy for debugging
-      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uN[i], m, &info);
+      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uN[i], m, &info);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u4[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
@@ -209,8 +211,8 @@ int main(int argc, char* argv[]) {
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u6[i]);  //copy for debugging
-      magma_dgetmatrix(m, n, dev_A[i], m, A+i*localN, m, 0);
-      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
+      magma_dgetmatrix(m, n, dev_A, m, A+i*localN, m, 0);
+      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uT[i], m, &info);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u7[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
@@ -220,7 +222,7 @@ int main(int argc, char* argv[]) {
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u9[i]);  //copy for debugging
-      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
+      magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uT[i], m, &info);
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u[i], 1);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
       init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
