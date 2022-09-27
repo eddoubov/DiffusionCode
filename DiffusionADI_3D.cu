@@ -22,7 +22,7 @@ __device__ __constant__ double dev_beta;
 //
 __global__ void test_func();
 __global__ void init_grid(double* u, int update);
-__global__ void init_A(double* A);
+//__global__ void init_A(double* A);
 __global__ void expl_x(double* u, double* du, double dt);
 __global__ void expl_y(double* u, double* du, double dt);
 __global__ void expl_z(double* u, double* du, double dt);
@@ -147,6 +147,25 @@ int main(int argc, char* argv[]) {
 
   piv = (magma_int_t*)malloc(m*sizeof(magma_int_t));
 
+  for (j=0; j<localN; ++j) {
+    for (i=0; i<localN; ++i) {
+      index = i + j*localN
+      if ((i == 0 && j == 0) || (i == dev_N-1 && j == dev_N-1)) {
+	A[index] = 1;
+      } else if ((i == 1 && j == 0) || (i == (localN-2) && j == (localN-1))) {
+	A[index] = 0;
+      } else if (i-j == 0) {
+	A[index] = 1 + lambda;
+      } else if (i-j == -1 || i-j == 1) {
+	A[index] = -lambda/2;
+      } else {
+	A[index] = 0;
+      }
+    }
+  }
+
+  magma_dsetmatrix(m, m, A, m, dev_A, m);
+  
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
@@ -164,7 +183,7 @@ int main(int argc, char* argv[]) {
     // Initialize implicit matrix
     init_A<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_A[i]);
 
-    magma_dgetmatrix(m, n, dev_A[i], m, A+i*localN, m, 0);
+    //magma_dgetmatrix(m, n, dev_A[i], m, A+i*localN, m, 0);
     magma_dgetrf_gpu(m, m, dev_A[i], m, piv, &info); 
     
     for (int j=0; j<num_iter; ++j) {
@@ -190,6 +209,7 @@ int main(int argc, char* argv[]) {
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u6[i]);  //copy for debugging
+      magma_dgetmatrix(m, n, dev_A[i], m, A+i*localN, m, 0);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A[i], m, piv, dev_uT[i], m, &info);
       copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u7[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
@@ -523,6 +543,7 @@ __global__ void init_grid(double* u, int update) {
   }
 }
 
+/**
 __global__ void init_A(double* A) {
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
@@ -541,6 +562,7 @@ __global__ void init_A(double* A) {
     A[g_i] = 0;
   }
 }
+**/
 
 __global__ void expl_x(double* u, double* du, double dt) {
   __shared__ double localu[maxThreadsPerBlock];
@@ -634,11 +656,11 @@ __global__ void transpose(double* u, double* uT, int dir) {
     int z = blockIdx.z * dev_N * dev_N;
     int width = gridDim.x * TILE_DIM;
 
-    printf("%d\n", gridDim.x);
+    //printf("%d\n", gridDim.x);
     
-    for (int j = 0; j < dev_N; j += BLOCK_ROWS) {
+    for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
       
-      localu[threadIdx.y+j][threadIdx.x] = u[(y+j)*width + x + z*dev_N*dev_N];
+      localu[threadIdx.y+j][threadIdx.x] = u[(y+j)*width + x + z];
       
     }
     
@@ -647,21 +669,35 @@ __global__ void transpose(double* u, double* uT, int dir) {
     x = blockIdx.y * TILE_DIM + threadIdx.x;
     y = blockIdx.x * TILE_DIM + threadIdx.y;
 
-    for (int j = 0; j < dev_N; j += BLOCK_ROWS) {
+    for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
       
-      uT[(y+j)*width + x] = localu[threadIdx.x][threadIdx.y + j];
+      uT[(y+j)*width + x + z] = localu[threadIdx.x][threadIdx.y + j];
       
     }
 
   } else {
 
-    int l_i = threadIdx.x;
-    int l_j = blockIdx.x;
-    int l_k = blockIdx.y;
+    int x = blockIdx.x * TILE_DIM + threadIdx.x;
+    int z = blockIdx.y * TILE_DIM + threadIdx.y;
+    int y = blockIdx.z * dev_N;
+    int width = gridDim.x * TILE_DIM * dev_N;
 
-    int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
+    for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
+      
+      localu[threadIdx.y+j][threadIdx.x] = u[(z+j)*width + x + y];
+      
+    }
+    
+    __syncthreads();
 
-    uT[g_i] = u[g_i];
+    x = blockIdx.y * TILE_DIM + threadIdx.x;
+    z = blockIdx.x * TILE_DIM + threadIdx.y;
+
+    for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
+      
+      uT[(z+j)*width + x + y] = localu[threadIdx.x][threadIdx.y + j];
+      
+    }
     /**
     int l_i = threadIdx.x;
     int l_k = blockIdx.x;
@@ -736,6 +772,10 @@ __global__ void copy(double* u1, double* u2) {
 
   int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
 
+  if (l_k == 0 && l_j == 0 && l_i == 0) {
+    printf("%lf\n", u1[g_i]);
+  }
+  
   u2[g_i] = u1[g_i]; 
 }
 
