@@ -48,8 +48,8 @@ int main(int argc, char* argv[]) {
   // Define grid and thread dimensions
   // Turn the following into an if statement later
   // to account for N > 1024
-  const int tPB2D = localN;
-  const int bPG2D = localN;
+  //const int tPB2D = localN;
+  //const int bPG2D = localN;
 
   // Define variable for ADI scheme
   double lambda = (tau*D)/(pow(dx,2));
@@ -185,7 +185,7 @@ int main(int argc, char* argv[]) {
     // Initialize implicit matrix
     //init_A<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_A[i]);
 
-    //magma_dgetmatrix(m, n, dev_A[i], m, A+i*localN, m, 0);
+    magma_dgetmatrix(m, n, dev_A, m, A+i*localN, m, 0);
     magma_dgetrf_gpu(m, m, dev_A, m, piv, &info); 
     
     for (int j=0; j<num_iter; ++j) {
@@ -193,38 +193,40 @@ int main(int argc, char* argv[]) {
       //test_func<<<grid, block>>>();
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], dev_uN[i], 1);
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u1[i]);  // copy for debugging
       expl_x<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u1[i]);  // copy for debugging
+      //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u1[i]);  // copy for debugging
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u2[i]);  //copy for debugging
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u2[i]);  //copy for debugging
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u3[i]);  //copy for debugging
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u3[i]);  //copy for debugging
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uN[i], m, &info);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u4[i]);  //copy for debugging
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u4[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u6[i]);  //copy for debugging
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u6[i]);  //copy for debugging
       magma_dgetmatrix(m, n, dev_A, m, A+i*localN, m, 0);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uT[i], m, &info);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uT[i], dev_u7[i]);  //copy for debugging
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u7[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_u9[i]);  //copy for debugging
+      magma_dgetmatrix(m, n, dev_A, m, A+i*localN, m, 0);
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u9[i]);  //copy for debugging
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uT[i], m, &info);
-      transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u[i], 1);
-      copy<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
+      transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u[i], 0);
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
       init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
       
       // Transpose grid in kernel
@@ -495,6 +497,11 @@ int main(int argc, char* argv[]) {
     }
 
   fclose(fileid13);
+
+  free(A);
+  magma_free(dev_A);
+  free(piv);
+  magma_finalize();
   
   cudaFreeHost(u);
   cudaFreeHost(du);
@@ -541,7 +548,7 @@ __global__ void init_grid(double* u, int update) {
     //printf("right_corner\n");
     u[g_i] = dev_phi_C;
   } else if (update == 0) {
-    u[g_i] = 0;
+    u[g_i] = dev_phi_C;
   }
 }
 
@@ -677,7 +684,7 @@ __global__ void transpose(double* u, double* uT, int dir) {
       
     }
 
-  } else {
+  } else if (dir == 0) {
 
     int x = blockIdx.x * TILE_DIM + threadIdx.x;
     int z = blockIdx.y * TILE_DIM + threadIdx.y;
@@ -700,22 +707,10 @@ __global__ void transpose(double* u, double* uT, int dir) {
       uT[(z+j)*width + x + y] = localu[threadIdx.x][threadIdx.y + j];
       
     }
-    /**
-    int l_i = threadIdx.x;
-    int l_k = blockIdx.x;
-
-     for (int l_j = 0; l_j < dev_N; ++l_j) {
-      
-      int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
-      int g_iT = l_k + dev_N*l_j + dev_N*dev_N*l_i;
-
-      uT[g_iT] = u[g_i];
-    }
-    **/
   }
 }
 
-__global__ void comb_u(double* u1, double* u2, double* u3, int pom) {
+__global__ void comb_u(double* mat1, double* mat2, double* mat3, int pom) {
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
   int l_k = blockIdx.y;
@@ -723,13 +718,13 @@ __global__ void comb_u(double* u1, double* u2, double* u3, int pom) {
   int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
 
   if (pom == 1) {
-    u3[g_i] = u1[g_i] + u2[g_i];
+    mat3[g_i] = mat1[g_i] + mat2[g_i];
   } else {
-    u3[g_i] = u1[g_i] - u2[g_i];
+    mat3[g_i] = mat1[g_i] - mat2[g_i];
   }
 }
 
-__global__ void add_react_term(double* u, double* uN, int mod_bool) {
+__global__ void add_react_term(double* idata, double* odata, int mod_bool) {
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
   int l_k = blockIdx.y;
@@ -740,44 +735,55 @@ __global__ void add_react_term(double* u, double* uN, int mod_bool) {
   double phi_V = dev_phi_C - 10;
   
   if (mod_bool == 1) {
-    if (u[g_i] > phi_V) {
-      react_term = -dev_alpha*u[g_i]/2;
+    if (idata[g_i] > phi_V) {
+      react_term = -dev_alpha*idata[g_i]/2;
     } else {
       react_term = 0;
     }
   } else {
-    if (u[g_i] > phi_V) {
-      react_term = -dev_alpha*u[g_i]/2 - dev_beta/2;
-    } else if (u[g_i] < phi_V && u[g_i] > dev_beta) {
+    if (idata[g_i] > phi_V) {
+      react_term = -dev_alpha*idata[g_i]/2 - dev_beta/2;
+    } else if (idata[g_i] < phi_V && idata[g_i] > dev_beta) {
       react_term = -dev_beta/2;
     } else {
-      react_term = -u[g_i];
+      react_term = -idata[g_i];
     }
   }
 
   if (l_i == 0 || l_i == (dev_N - 1)) {
-    uN[g_i] = 0;
+    odata[g_i] = 0;
   } else if (l_j == 0 || l_j == (dev_N - 1)) {
-    uN[g_i] = 0;
+    odata[g_i] = 0;
   } else if (l_k == 0 || l_k == (dev_N - 1)) {
-    uN[g_i] = 0;
+    odata[g_i] = 0;
   } else {
-    uN[g_i] = react_term;
+    odata[g_i] = react_term;
   }
   
 }
 
-__global__ void copy(double* u1, double* u2) {
-  int l_i = threadIdx.x;
-  int l_j = blockIdx.x;
-  int l_k = blockIdx.y;
+__global__ void copy(double* cdata1, double* cdata2) {
+  //int l_i = threadIdx.x;
+  //int l_j = blockIdx.x;
+  //int l_k = blockIdx.y;
 
-  int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
+  //int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
 
+  
+  int x = blockIdx.x * TILE_DIM + threadIdx.x;
+  int y = blockIdx.y * TILE_DIM + threadIdx.y;
+  int z = blockIdx.z * dev_N * dev_N;
+  int width = gridDim.x * TILE_DIM;
+
+  for (int j = 0; j < TILE_DIM; j+= BLOCK_ROWS)
+    cdata2[(y+j)*width + x + z] = cdata1[(y+j)*width + x + z];
+  
+  /**
   if (l_k == 0 && l_j == 0 && l_i == 0) {
     printf("%lf\n", u1[g_i]);
   }
+  **/
   
-  u2[g_i] = u1[g_i]; 
+  //odata[g_i] = idata[g_i]; 
 }
 
