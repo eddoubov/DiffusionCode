@@ -21,7 +21,7 @@ __device__ __constant__ double dev_beta;
 
 //
 __global__ void test_func();
-__global__ void init_grid(double* u, int update);
+//__global__ void init_grid(double* u, int update);
 //__global__ void init_A(double* A);
 __global__ void expl_x(double* u, double* du, double dt);
 __global__ void expl_y(double* u, double* du, double dt);
@@ -167,6 +167,27 @@ int main(int argc, char* argv[]) {
   }
 
   magma_dsetmatrix(m, m, A, m, dev_A, m, 0);
+
+  int update = 0;
+  
+  for (int k=0; k<localN; ++k) {
+    for (int j=0; j<localN; ++j) {
+      for (int i=0; i<localN; ++i) {
+	ind  = i + j*localN + k*localN*localN;
+
+	if (i == 0 || j == 0 || k == 0) {
+	  //printf("left_corner\n");
+	  u[ind] = phi_C;
+	} else if (i == localN-1 || j == localN-1 || k == localN-1) {
+	  //printf("right_corner\n");
+	  u[ind] = phi_C;
+	} else if (update == 0) {
+	  u[ind] = phi_C;
+	}
+      }
+    }
+  }
+	
   
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
@@ -181,7 +202,7 @@ int main(int argc, char* argv[]) {
   
   for (int i=0; i<numStreams; ++i) {
     // Initialize grid using kernel
-    init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 0);
+    //init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 0);
     // Initialize implicit matrix
     //init_A<<<bPG2D, tPB2D, 0, stream[i]>>>(dev_A[i]);
 
@@ -191,6 +212,13 @@ int main(int argc, char* argv[]) {
     for (int j=0; j<num_iter; ++j) {
       // Iterate explicitly in the x direction using kernel
       //test_func<<<grid, block>>>();
+      cudaMemcpyAsync(dev_u[i], u+i*localN, localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+
+      if (j > 0) {
+	cudaMemcpyAsync(dev_du[i], du+i*localN, localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+	cudaMemcpyAsync(dev_uN[i], uN+i*localN, localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+      }
+      
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], 0);
       comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_uN[i], dev_uN[i], 1);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_u1[i]);  // copy for debugging
@@ -203,6 +231,7 @@ int main(int argc, char* argv[]) {
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
       comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
       copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u3[i]);  //copy for debugging
+      magma_dgetmatrix(m, n, dev_A, m, A+i*localN, m, 0);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uN[i], m, &info);
       copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u4[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
@@ -227,8 +256,10 @@ int main(int argc, char* argv[]) {
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uT[i], m, &info);
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u[i], 0);
       copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
-      init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
-      
+      //init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
+      cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+      cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+      cudaMemcpyAsync(uN+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       // Transpose grid in kernel
       //transpose<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_du[i], dev_uT[i]);
       // Iterate implicitly in the y direction in kernel
@@ -247,8 +278,8 @@ int main(int argc, char* argv[]) {
   cudaEventElapsedTime(&elapsedTime, start, stop);
   
   for (int i=0; i<numStreams; ++i) {
-    cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
     cudaMemcpyAsync(u1+i*localN, dev_u1[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
     cudaMemcpyAsync(u2+i*localN, dev_u2[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
     cudaMemcpyAsync(u3+i*localN, dev_u3[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
@@ -534,6 +565,7 @@ __global__ void test_func() {
   
 }
 
+/**
 __global__ void init_grid(double* u, int update) {
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
@@ -551,6 +583,7 @@ __global__ void init_grid(double* u, int update) {
     u[g_i] = dev_phi_C;
   }
 }
+**/
 
 /**
 __global__ void init_A(double* A) {
