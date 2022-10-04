@@ -192,23 +192,23 @@ int main(int argc, char* argv[]) {
       // Iterate explicitly in the x direction using kernel
       //test_func<<<grid, block>>>();
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], 0);
-      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], dev_uN[i], 1);
-      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u1[i]);  // copy for debugging
+      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_uN[i], dev_uN[i], 1);
+      //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_u1[i]);  // copy for debugging
       expl_x<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
-      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
-      //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u1[i]);  // copy for debugging
+      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u1[i]);  // copy for debugging
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
-      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
       copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u2[i]);  //copy for debugging
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
-      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
       copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u3[i]);  //copy for debugging
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uN[i], m, &info);
       copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u4[i]);  //copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
-      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
+      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
-      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
+      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
       copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u6[i]);  //copy for debugging
@@ -217,9 +217,9 @@ int main(int argc, char* argv[]) {
       copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u7[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
-      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
+      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
-      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
+      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       magma_dgetmatrix(m, n, dev_A, m, A+i*localN, m, 0);
@@ -247,18 +247,18 @@ int main(int argc, char* argv[]) {
   cudaEventElapsedTime(&elapsedTime, start, stop);
   
   for (int i=0; i<numStreams; ++i) {
-    cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u1+i*localN, dev_u1[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u2+i*localN, dev_u2[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u3+i*localN, dev_u3[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u4+i*localN, dev_u4[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u5+i*localN, dev_u5[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u6+i*localN, dev_u6[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u7+i*localN, dev_u7[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u8+i*localN, dev_u8[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u9+i*localN, dev_u9[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-    cudaMemcpyAsync(u10+i*localN, dev_u10[i], localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+    cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u1+i*localN, dev_u1[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u2+i*localN, dev_u2[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u3+i*localN, dev_u3[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u4+i*localN, dev_u4[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u5+i*localN, dev_u5[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u6+i*localN, dev_u6[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u7+i*localN, dev_u7[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u8+i*localN, dev_u8[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u9+i*localN, dev_u9[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u10+i*localN, dev_u10[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
   }
 
   for (int i=0; i<numStreams; ++i)
@@ -655,7 +655,7 @@ __global__ void expl_z(double* u, double* du, double dt) {
   
 }
 
-__global__ void transpose(double* u, double* uT, int dir) {
+__global__ void transpose(double* idata, double* odata, int dir) {
   __shared__ double localu[TILE_DIM][TILE_DIM];
 
   if (dir == 1) {
@@ -669,7 +669,7 @@ __global__ void transpose(double* u, double* uT, int dir) {
     
     for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
       
-      localu[threadIdx.y+j][threadIdx.x] = u[(y+j)*width + x + z];
+      localu[threadIdx.y+j][threadIdx.x] = idata[(y+j)*width + x + z];
       
     }
     
@@ -680,7 +680,7 @@ __global__ void transpose(double* u, double* uT, int dir) {
 
     for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
       
-      uT[(y+j)*width + x + z] = localu[threadIdx.x][threadIdx.y + j];
+      odata[(y+j)*width + x + z] = localu[threadIdx.x][threadIdx.y + j];
       
     }
 
@@ -693,7 +693,7 @@ __global__ void transpose(double* u, double* uT, int dir) {
 
     for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
       
-      localu[threadIdx.y+j][threadIdx.x] = u[(z+j)*width + x + y];
+      localu[threadIdx.y+j][threadIdx.x] = idata[(z+j)*width + x + y];
       
     }
     
@@ -704,23 +704,34 @@ __global__ void transpose(double* u, double* uT, int dir) {
 
     for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS) {
       
-      uT[(z+j)*width + x + y] = localu[threadIdx.x][threadIdx.y + j];
+      odata[(z+j)*width + x + y] = localu[threadIdx.x][threadIdx.y + j];
       
     }
   }
 }
 
 __global__ void comb_u(double* mat1, double* mat2, double* mat3, int pom) {
+  /**
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
   int l_k = blockIdx.y;
 
   int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
-
+  **/
+  
+  int x = blockIdx.x * TILE_DIM + threadIdx.x;
+  int y = blockIdx.y * TILE_DIM + threadIdx.y;
+  int z = blockIdx.z * dev_N * dev_N;
+  int width = gridDim.x * TILE_DIM;
+  
   if (pom == 1) {
-    mat3[g_i] = mat1[g_i] + mat2[g_i];
+    //mat3[g_i] = mat1[g_i] + mat2[g_i];
+    for (int j = 0; j < TILE_DIM; j+= BLOCK_ROWS)
+      mat3[(y+j)*width + x + z] = mat1[(y+j)*width + x + z] + mat2[(y+j)*width + x + z];
   } else {
-    mat3[g_i] = mat1[g_i] - mat2[g_i];
+    //mat3[g_i] = mat1[g_i] - mat2[g_i];
+    for (int j = 0; j < TILE_DIM; j+= BLOCK_ROWS)
+      mat3[(y+j)*width + x + z] = mat1[(y+j)*width + x + z] - mat2[(y+j)*width + x + z];
   }
 }
 
@@ -768,7 +779,6 @@ __global__ void copy(double* cdata1, double* cdata2) {
   //int l_k = blockIdx.y;
 
   //int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
-
   
   int x = blockIdx.x * TILE_DIM + threadIdx.x;
   int y = blockIdx.y * TILE_DIM + threadIdx.y;
