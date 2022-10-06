@@ -327,7 +327,7 @@ int main(int argc, char* argv[]) {
     **/
   }
 
-  printf("cuda_test: %lf\n", u1[17]);
+  //printf("cuda_test: %lf\n", u1[17]);
   
   for (int i = 0; i<numStreams; ++i)
     cudaStreamDestroy(stream[i]);
@@ -521,14 +521,15 @@ int main(int argc, char* argv[]) {
     for (int i=0; i<(N*N); ++i) {
       if (i % N == 0) {
 	fprintf(fileid12, "%lf", u10[i+offset]);
-      } else if (i % N < (N-1)) {
+	} else if (i % N < (N-1)) {
 	fprintf(fileid12, ",%lf", u10[i+offset]);
-      } else {
+	} else {
 	fprintf(fileid12, ",%lf\n", u10[i+offset]);
+	}
       }
-    }
 
     fclose(fileid12);
+    **/
   }
 
   FILE *fileid13 = fopen("Test_A.csv", "w");
@@ -543,7 +544,6 @@ int main(int argc, char* argv[]) {
     }
 
   fclose(fileid13);
-    **/
     
   free(A);
   magma_free(dev_A);
@@ -573,6 +573,7 @@ int main(int argc, char* argv[]) {
   return 0;
 }
 
+  /**
 __global__ void test_func() {
   
   int i = threadIdx.x + blockIdx.x * blockDim.x;
@@ -582,6 +583,7 @@ __global__ void test_func() {
   printf("Threadx = %d, Blockx = %d, Thready = %d, Blocky = %d\n", threadIdx.x, blockIdx.x, threadIdx.y, blockIdx.y);
   
 }
+  **/
 
 /**
 __global__ void init_grid(double* u, int update) {
