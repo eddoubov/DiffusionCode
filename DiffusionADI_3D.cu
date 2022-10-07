@@ -6,6 +6,7 @@
 #include <magma_v2.h>
 #include <magma_types.h>
 #include <magma_lapack.h>
+#include <math.h>
 
 const int numStreams = 1;
 const int maxThreadsPerBlock = 1024;
@@ -42,6 +43,20 @@ int main(int argc, char* argv[]) {
   double C = atof(argv[6]);
   double phi_C = atof(argv[7]);
   int num_iter = atof(argv[8]);
+
+  long int seed;
+  if (argc > 9) {
+    seed = atol(argv[9]);
+  } else {
+
+    FILE* urand = fopen("/dev/urandom", "r");
+
+    fread( &seed, sizeof(long int), 1, urand);
+
+    fclose(urand);
+  }
+
+  //printf("%ld\n", seed); 
   
   int localN = N/numStreams;
 
@@ -194,7 +209,7 @@ int main(int argc, char* argv[]) {
       }
     }
   }
-	
+  
   
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
