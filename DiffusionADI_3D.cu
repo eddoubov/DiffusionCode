@@ -56,7 +56,8 @@ int main(int argc, char* argv[]) {
     fclose(urand);
   }
 
-  //printf("%ld\n", seed); 
+  //printf("%ld\n", seed);
+  srand48(seed);
   
   int localN = N/numStreams;
 
