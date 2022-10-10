@@ -32,6 +32,26 @@ __global__ void comb_u(double* u1, double* u2, double* u3, int pom);
 __global__ void add_react_term(double* u, double* uN, int mod_bool);
 __global__ void copy(double* u1, double* u2);
 
+void swap (int *a, int *b) {
+  int temp = *a;
+  //printf("%d\n", *a);
+  *a = *b;
+  *b = temp;
+}
+
+void randomize (int array[], int n, long int seed) {
+  
+  for (int i = n-1; i > 0; i--) {
+    int j = lrand48() % (i+1);
+
+    if (i == 10) {
+      printf("%d\n", j);
+    }
+
+    swap(&array[i], &array[j]);
+  }
+}
+
 int main(int argc, char* argv[]) {
 
   // Read in inputs
@@ -56,10 +76,8 @@ int main(int argc, char* argv[]) {
     fclose(urand);
   }
 
-  //printf("%ld\n", seed);
-  srand48(seed);
-  
   int localN = N/numStreams;
+  int gridsize = localN*localN*localN;
 
   // Define grid and thread dimensions
   // Turn the following into an if statement later
@@ -74,6 +92,23 @@ int main(int argc, char* argv[]) {
   double beta = time_step*C;
   printf("%lf\n", lambda);
   printf("%lf\n", alpha);
+
+  // Start Monte-Carlo Method
+  srand48(seed);
+  printf("%ld\n", seed);
+  
+  int *rand_indices;
+  cudaHostAlloc((void**)&rand_indices, gridsize*sizeof(int), cudaHostAllocDefault);
+
+  for (int i = 0; i < gridsize; ++i) {
+    rand_indices[i] = i;
+  }
+
+  printf("%d\n", rand_indices[10]);
+  
+  randomize(rand_indices, gridsize, seed);
+
+  printf("%d\n", rand_indices[10]);
   
   magma_init();
   magma_int_t *piv, info;
@@ -113,10 +148,10 @@ int main(int argc, char* argv[]) {
   cudaMemcpyToSymbol(dev_beta, &beta, sizeof(double));
 
   // Initialize memory on host
-  cudaHostAlloc((void**)&u, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
-  cudaHostAlloc((void**)&du, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
-  cudaHostAlloc((void**)&uT, localN*localN*localN*sizeof(double), cudaHostAllocDefault);  //delete later
-  cudaHostAlloc((void**)&uN, localN*localN*localN*sizeof(double), cudaHostAllocDefault);  //delete later
+  cudaHostAlloc((void**)&u, gridsize*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&du, gridsize*sizeof(double), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&uT, gridsize*sizeof(double), cudaHostAllocDefault);  //delete later
+  cudaHostAlloc((void**)&uN, gridsize*sizeof(double), cudaHostAllocDefault);  //delete later
 
   /**
   cudaHostAlloc((void**)&u1, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
@@ -141,10 +176,10 @@ int main(int argc, char* argv[]) {
   // Initialize memory on device
   cudaStream_t stream[numStreams];
   for (int i=0; i<numStreams; ++i) {
-    cudaMalloc((void**)&dev_u[i], localN*localN*localN*sizeof(double));
-    cudaMalloc((void**)&dev_du[i], localN*localN*localN*sizeof(double));
-    cudaMalloc((void**)&dev_uT[i], localN*localN*localN*sizeof(double));
-    cudaMalloc((void**)&dev_uN[i], localN*localN*localN*sizeof(double));
+    cudaMalloc((void**)&dev_u[i], gridsize*sizeof(double));
+    cudaMalloc((void**)&dev_du[i], gridsize*sizeof(double));
+    cudaMalloc((void**)&dev_uT[i], gridsize*sizeof(double));
+    cudaMalloc((void**)&dev_uN[i], gridsize*sizeof(double));
 
     /**
     cudaMalloc((void**)&dev_u1[i], localN*localN*localN*sizeof(double));
@@ -235,11 +270,11 @@ int main(int argc, char* argv[]) {
     for (int j=0; j<num_iter; ++j) {
       // Iterate explicitly in the x direction using kernel
       //test_func<<<grid, block>>>();
-      cudaMemcpyAsync(dev_u[i], u+i*localN, localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+      cudaMemcpyAsync(dev_u[i], u+i*localN, gridsize*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
 
       if (j > 0) {
-	cudaMemcpyAsync(dev_du[i], du+i*localN, localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-	cudaMemcpyAsync(dev_uN[i], uN+i*localN, localN*localN*localN*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+	cudaMemcpyAsync(dev_du[i], du+i*localN, gridsize*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+	cudaMemcpyAsync(dev_uN[i], uN+i*localN, gridsize*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
       }
       
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], 0);
@@ -280,9 +315,9 @@ int main(int argc, char* argv[]) {
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u[i], 0);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
       //init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
-      cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-      cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-      cudaMemcpyAsync(uN+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+      cudaMemcpyAsync(u+i*localN, dev_u[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+      cudaMemcpyAsync(du+i*localN, dev_du[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+      cudaMemcpyAsync(uN+i*localN, dev_uN[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       // Transpose grid in kernel
       //transpose<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_du[i], dev_uT[i]);
       // Iterate implicitly in the y direction in kernel
