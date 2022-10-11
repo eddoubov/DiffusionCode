@@ -109,6 +109,21 @@ int main(int argc, char* argv[]) {
   randomize(rand_indices, gridsize, seed);
 
   printf("%d\n", rand_indices[10]);
+
+  for (int i=0; i< gridsize; ++i) {
+    int a = rand_indices[i];
+    int z_coord = a/(localN*localN);
+    int b = a % (localN*localN);
+    int y_coord = b/(localN);
+    int c = b % localN;
+    int x_coord = c;
+
+    if (i == 10) {
+      printf("%d,", x_coord);
+      printf("%d,", y_coord);
+      printf("%d\n", z_coord);
+    }
+  }
   
   magma_init();
   magma_int_t *piv, info;
