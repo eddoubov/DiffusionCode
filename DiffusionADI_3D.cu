@@ -52,6 +52,18 @@ void randomize (int array[], int n, long int seed) {
   }
 }
 
+void get_coords (int index, int localN, int* x_coord, int* y_coord, int* z_coord) {
+
+  int a = index;
+  *z_coord = a/(localN*localN);
+  int b = a % (localN*localN);
+  *y_coord = b/(localN);
+  int c = b % localN;
+  *x_coord = c;
+  
+}
+
+
 int main(int argc, char* argv[]) {
 
   // Read in inputs
@@ -62,11 +74,12 @@ int main(int argc, char* argv[]) {
   double R = atof(argv[5]);
   double C = atof(argv[6]);
   double phi_C = atof(argv[7]);
-  int num_iter = atof(argv[8]);
+  int cap_dens = atol(argv[8]);
+  int num_iter = atol(argv[9]);
 
   long int seed;
-  if (argc > 9) {
-    seed = atol(argv[9]);
+  if (argc > 10) {
+    seed = atol(argv[100]);
   } else {
 
     FILE* urand = fopen("/dev/urandom", "r");
@@ -97,8 +110,9 @@ int main(int argc, char* argv[]) {
   srand48(seed);
   printf("%ld\n", seed);
   
-  int *rand_indices;
+  int *rand_indices, *cap_indices;
   cudaHostAlloc((void**)&rand_indices, gridsize*sizeof(int), cudaHostAllocDefault);
+  cudaHostAlloc((void**)&cap_indices, gridsize*sizeof(int), cudaHostAllocDefault);
 
   for (int i = 0; i < gridsize; ++i) {
     rand_indices[i] = i;
@@ -110,20 +124,37 @@ int main(int argc, char* argv[]) {
 
   printf("%d\n", rand_indices[10]);
 
+  
+  int cap_count = 0;
+  int x_coord, y_coord, z_coord;
+  int temp_index;
+  
   for (int i=0; i< gridsize; ++i) {
-    int a = rand_indices[i];
-    int z_coord = a/(localN*localN);
-    int b = a % (localN*localN);
-    int y_coord = b/(localN);
-    int c = b % localN;
-    int x_coord = c;
+
+    temp_index = rand_indices[i];
+    
+    get_coords(temp_index, localN, &x_coord, &y_coord, &z_coord);
+    
+    if (i == 0) {
+      cap_indices[cap_count] = temp_index;
+      cap_count++;
+      continue;
+    }
+
+    /**
+    for (int j=0; j<cap_count; ++j) {
+      
+    }
+    **/  
 
     if (i == 10) {
       printf("%d,", x_coord);
       printf("%d,", y_coord);
       printf("%d\n", z_coord);
     }
+    
   }
+  
   
   magma_init();
   magma_int_t *piv, info;
