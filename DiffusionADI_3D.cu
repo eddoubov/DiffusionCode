@@ -92,6 +92,14 @@ int main(int argc, char* argv[]) {
   int localN = N/numStreams;
   int gridsize = localN*localN*localN;
 
+  long int Vt = (N*dx)*(N*dx)*(N*dx);
+  long int Nc = cap_dens*(Vt/1e9);
+  double mu = cbrt(Vt/Nc);
+  int sigma = 60;
+
+  printf("%ld\n", Nc);
+  printf("%lf\n", mu);
+
   // Define grid and thread dimensions
   // Turn the following into an if statement later
   // to account for N > 1024
@@ -127,7 +135,8 @@ int main(int argc, char* argv[]) {
   
   int cap_count = 0;
   int x_coord, y_coord, z_coord;
-  int temp_index;
+  int x_cap, y_cap, z_cap;
+  int temp_index, cap_index;
   
   for (int i=0; i< gridsize; ++i) {
 
@@ -141,16 +150,29 @@ int main(int argc, char* argv[]) {
       continue;
     }
 
-    /**
+    double min_dist_cap;
+    
     for (int j=0; j<cap_count; ++j) {
-      
+      cap_index = cap_indices[j];
+      get_coords(cap_index, localN, &x_cap, &y_cap, &z_cap);
+
+      double expr = (x_coord-x_cap)*(x_coord-x_cap) + (y_coord-y_cap)*(y_coord-y_cap)
+	+ (z_coord-z_cap)*(z_coord-z_cap);
+      double dist = sqrt(expr);
+
+      if (j==0) {
+	min_dist_cap = dist;
+      } else if(dist < min_dist_cap) {
+	min_dist_cap = dist;
+      }
     }
-    **/  
+
+    
 
     if (i == 10) {
-      printf("%d,", x_coord);
-      printf("%d,", y_coord);
-      printf("%d\n", z_coord);
+      printf("%d,", x_cap);
+      printf("%d,", y_cap);
+      printf("%d\n", z_cap);
     }
     
   }
