@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
   double R = atof(argv[5]);
   double C = atof(argv[6]);
   double phi_C = atof(argv[7]);
-  int cap_dens = atol(argv[8]);
+  double cap_vf = atof(argv[8]);
   int num_iter = atol(argv[9]);
 
   long int seed;
@@ -92,10 +92,10 @@ int main(int argc, char* argv[]) {
   int localN = N/numStreams;
   int gridsize = localN*localN*localN;
 
-  long int Vt = (N*dx)*(N*dx)*(N*dx);
-  long int Nc = cap_dens*(Vt/1e9);
-  double mu = cbrt(Vt/Nc);
-  int sigma = 60;
+  long int Vt = N*N*N;
+  long int Nc = Vt*cap_vf;
+  double mu = N/cbrt(Nc);
+  int sigma = 60/dx;
 
   printf("%ld\n", Nc);
   printf("%lf\n", mu);
@@ -131,7 +131,6 @@ int main(int argc, char* argv[]) {
   randomize(rand_indices, gridsize, seed);
 
   printf("%d\n", rand_indices[10]);
-
   
   int cap_count = 0;
   int x_coord, y_coord, z_coord;
@@ -165,9 +164,7 @@ int main(int argc, char* argv[]) {
       } else if(dist < min_dist_cap) {
 	min_dist_cap = dist;
       }
-    }
-
-    
+    }    
 
     if (i == 10) {
       printf("%d,", x_cap);
