@@ -164,12 +164,23 @@ int main(int argc, char* argv[]) {
       } else if(dist < min_dist_cap) {
 	min_dist_cap = dist;
       }
-    }    
+    }
+
+    //printf("%lf\n", erfc(-1*(min_dist_cap-mu)/(sqrt(2)*sigma)));
+    double prob_func = (0.5)*erfc(-1*(min_dist_cap-mu)/(sigma)*M_SQRT1_2);
+    //printf("%lf\n", prob_func);
+    double rand_num = drand48();
+
+    if (rand_num <= prob_func) {
+      cap_indices[cap_count] = temp_index;
+      cap_count++;
+    }
 
     if (i == 10) {
       printf("%d,", x_cap);
       printf("%d,", y_cap);
       printf("%d\n", z_cap);
+      //printf("%lf\n", prob_func);
     }
     
   }
