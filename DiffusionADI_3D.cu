@@ -7,6 +7,9 @@
 #include <magma_types.h>
 #include <magma_lapack.h>
 #include <math.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 const int numStreams = 1;
 const int maxThreadsPerBlock = 1024;
@@ -66,6 +69,8 @@ void get_coords (int index, int localN, int* x_coord, int* y_coord, int* z_coord
 
 int main(int argc, char* argv[]) {
 
+  struct stat st = {0};
+  
   // Read in inputs
   const int N = atol(argv[1]);
   double dx = atof(argv[2]);
@@ -77,6 +82,8 @@ int main(int argc, char* argv[]) {
   double cap_vf = atof(argv[8]);
   int num_iter = atol(argv[9]);
 
+  //printf("%s\n", "hey");
+  
   long int seed;
   if (argc > 10) {
     seed = atol(argv[100]);
@@ -95,7 +102,7 @@ int main(int argc, char* argv[]) {
   long int Vt = N*N*N;
   long int Nc = Vt*cap_vf;
   double mu = N/cbrt(Nc);
-  int sigma = 60/dx;
+  double sigma = .43;
 
   printf("%ld\n", Nc);
   printf("%lf\n", mu);
@@ -174,17 +181,24 @@ int main(int argc, char* argv[]) {
     if (rand_num <= prob_func) {
       cap_indices[cap_count] = temp_index;
       cap_count++;
+      //printf("%lf\n", rand_num);
+      //printf("%lf\n", prob_func);
+      //printf("%d\n", cap_count);
+      //printf("%d\n", i);
+      double num = cap_count;
+      double denom = i;
+      double prop = num/denom;
+      //printf("%lf\n", prop);
     }
 
     if (i == 10) {
-      printf("%d,", x_cap);
-      printf("%d,", y_cap);
-      printf("%d\n", z_cap);
+      //printf("%d,", x_cap);
+      //printf("%d,", y_cap);
+      //printf("%d\n", z_cap);
       //printf("%lf\n", prob_func);
     }
     
   }
-  
   
   magma_init();
   magma_int_t *piv, info;
@@ -194,7 +208,7 @@ int main(int argc, char* argv[]) {
   
   //Declare matrices on host
   double *u, *du, *uT, *uN, *A;
-  //double *u1, *u2, *u3, *u4, *u5, *u6, *u7, *u8, *u9, *u10;
+  double *u1, *u2, *u3, *u4, *u5, *u6, *u7, *u8, *u9, *u10;
 
   // Declare matrices for device
   double* dev_u[numStreams];
@@ -203,7 +217,7 @@ int main(int argc, char* argv[]) {
   double* dev_uN[numStreams];
   magmaDouble_ptr dev_A;
 
-  /**
+  
   double* dev_u1[numStreams];
   double* dev_u2[numStreams];
   double* dev_u3[numStreams];
@@ -214,7 +228,6 @@ int main(int argc, char* argv[]) {
   double* dev_u8[numStreams];
   double* dev_u9[numStreams];
   double* dev_u10[numStreams];
-  **/
   
   // Send varibales to constant memory
   cudaMemcpyToSymbol(dev_N, &N, sizeof(const int));
@@ -229,7 +242,7 @@ int main(int argc, char* argv[]) {
   cudaHostAlloc((void**)&uT, gridsize*sizeof(double), cudaHostAllocDefault);  //delete later
   cudaHostAlloc((void**)&uN, gridsize*sizeof(double), cudaHostAllocDefault);  //delete later
 
-  /**
+  
   cudaHostAlloc((void**)&u1, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
   cudaHostAlloc((void**)&u2, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
   cudaHostAlloc((void**)&u3, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
@@ -240,7 +253,6 @@ int main(int argc, char* argv[]) {
   cudaHostAlloc((void**)&u8, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
   cudaHostAlloc((void**)&u9, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
   cudaHostAlloc((void**)&u10, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
-  **/
   
   err = magma_dmalloc_cpu(&A, m*m);
 
@@ -257,7 +269,7 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void**)&dev_uT[i], gridsize*sizeof(double));
     cudaMalloc((void**)&dev_uN[i], gridsize*sizeof(double));
 
-    /**
+    
     cudaMalloc((void**)&dev_u1[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_u2[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_u3[i], localN*localN*localN*sizeof(double));
@@ -268,7 +280,7 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void**)&dev_u8[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_u9[i], localN*localN*localN*sizeof(double));
     cudaMalloc((void**)&dev_u10[i], localN*localN*localN*sizeof(double));
-    **/
+    
     
     err = magma_dmalloc(&dev_A, m*m);
     if (err) {
@@ -321,7 +333,34 @@ int main(int argc, char* argv[]) {
       }
     }
   }
+
+  for (int j=0; j<N; ++j) {
+    int offset = j*N*N;
+    char fn_temp[28];
+
+    sprintf(fn_temp, "u_temp_files/Test_u_%d.csv", j);
+
+    if (stat("u_temp_files", &st) == -1) {
+      mkdir("u_temp_files", 0700);
+    }
+
+    FILE *fileid_temp = fopen(fn_temp, "w");
   
+    for (int i=0; i<(N*N); ++i) {
+      //printf("%lf\n", u[i+offset]);
+      //printf("%d\n", offset);
+      if (i % N == 0) {
+	fprintf(fileid_temp, "%lf", u[i+offset]);
+      } else if (i % N < (N-1)) {
+	fprintf(fileid_temp, ",%lf", u[i+offset]);
+      } else {
+	fprintf(fileid_temp, ",%lf\n", u[i+offset]);
+      }
+    }
+
+    fclose(fileid_temp);
+  }
+
   
   cudaEvent_t start, stop;
   cudaEventCreate(&start);
@@ -352,44 +391,54 @@ int main(int argc, char* argv[]) {
 	cudaMemcpyAsync(dev_du[i], du+i*localN, gridsize*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
 	cudaMemcpyAsync(dev_uN[i], uN+i*localN, gridsize*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
       }
-      
+
+      //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_u1[i]);   // copy for debugging
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], 0);
-      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_uN[i], dev_uN[i], 1);
-      //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_u1[i]);  // copy for debugging
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_uN[i], dev_uN[i], 1);
+      cudaMemcpyAsync(u1+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       expl_x<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
-      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u1[i]);  // copy for debugging
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
-      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u2[i]);  //copy for debugging
+      cudaMemcpyAsync(u2+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 1);
-      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 1);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u3[i]);  //copy for debugging
+      cudaMemcpyAsync(u3+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       magma_dgetmatrix(m, n, dev_A, m, A+i*localN, m, 0);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uN[i], m, &info);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u4[i]);  //copy for debugging
+      cudaMemcpyAsync(u4+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
-      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
       expl_y<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
-      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
+      cudaMemcpyAsync(u5+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u6[i]);  //copy for debugging
+      cudaMemcpyAsync(u6+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       magma_dgetmatrix(m, n, dev_A, m, A+i*localN, m, 0);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uT[i], m, &info);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u7[i]);  //copy for debugging
+      cudaMemcpyAsync(u7+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
-      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
-      comb_u<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
+      comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
+      cudaMemcpyAsync(u8+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       magma_dgetmatrix(m, n, dev_A, m, A+i*localN, m, 0);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u9[i]);  //copy for debugging
+      cudaMemcpyAsync(u9+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       magma_dgetrs_gpu(MagmaTrans, m, n*n, dev_A, m, piv, dev_uT[i], m, &info);
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u[i], 0);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_u[i], dev_u10[i]);  //copy for debugging
+      cudaMemcpyAsync(u10+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       //init_grid<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], 1);
       cudaMemcpyAsync(u+i*localN, dev_u[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       cudaMemcpyAsync(du+i*localN, dev_du[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
@@ -411,22 +460,21 @@ int main(int argc, char* argv[]) {
   float elapsedTime;
   cudaEventElapsedTime(&elapsedTime, start, stop);
 
-  /**
+  
   for (int i=0; i<numStreams; ++i) {
-    //cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    //cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u1+i*localN, dev_u1[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u2+i*localN, dev_u2[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u3+i*localN, dev_u3[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u4+i*localN, dev_u4[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u5+i*localN, dev_u5[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u6+i*localN, dev_u6[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u7+i*localN, dev_u7[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u8+i*localN, dev_u8[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u9+i*localN, dev_u9[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u10+i*localN, dev_u10[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u1+i*localN, dev_u1[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u2+i*localN, dev_u2[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u3+i*localN, dev_u3[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u4+i*localN, dev_u4[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u5+i*localN, dev_u5[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u6+i*localN, dev_u6[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u7+i*localN, dev_u7[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u8+i*localN, dev_u8[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u9+i*localN, dev_u9[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u10+i*localN, dev_u10[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
   }
-  **/
 
   for (int i=0; i<numStreams; ++i)
     cudaStreamSynchronize(stream[i]);
@@ -440,7 +488,7 @@ int main(int argc, char* argv[]) {
     cudaFree(dev_uT[i]);
     cudaFree(dev_uN[i]);
 
-    /**
+    
     cudaFree(dev_u1[i]);
     cudaFree(dev_u2[i]);
     cudaFree(dev_u3[i]);
@@ -451,7 +499,7 @@ int main(int argc, char* argv[]) {
     cudaFree(dev_u8[i]);
     cudaFree(dev_u9[i]);
     cudaFree(dev_u10[i]);
-    **/
+    
   }
 
   //printf("cuda_test: %lf\n", u1[17]);
@@ -462,7 +510,7 @@ int main(int argc, char* argv[]) {
   //dgetri(m, A, n, piv
   
   char fn1[25], fn2[23];
-  //char fn3[25], fn4[25], fn5[25], fn6[25], fn7[25], fn8[25], fn9[25], fn10[25], fn11[25], fn12[27];
+  char fn3[25], fn4[25], fn5[25], fn6[25], fn7[25], fn8[25], fn9[25], fn10[25], fn11[25], fn12[27];
 
   for (int j=0; j<N; ++j) {
 
@@ -470,7 +518,7 @@ int main(int argc, char* argv[]) {
 
     sprintf(fn1, "du_files/Test_du_%d.csv", j);
     sprintf(fn2, "u_files/Test_u_%d.csv", j);
-    /**
+    
     sprintf(fn3, "u1_files/Test_u1_%d.csv", j);
     sprintf(fn4, "u2_files/Test_u2_%d.csv", j);
     sprintf(fn5, "u3_files/Test_u3_%d.csv", j);
@@ -481,7 +529,54 @@ int main(int argc, char* argv[]) {
     sprintf(fn10, "u8_files/Test_u8_%d.csv", j);
     sprintf(fn11, "u9_files/Test_u9_%d.csv", j);
     sprintf(fn12, "u10_files/Test_u10_%d.csv", j);
-    **/
+
+    if (stat("du_files", &st) == -1) {
+      mkdir("du_files", 0700);
+    }
+    
+    if (stat("u_files", &st) == -1) {
+      mkdir("u_files", 0700);
+    }
+    
+    if (stat("u1_files", &st) == -1) {
+      mkdir("u1_files", 0700);
+    }
+    
+    if (stat("u2_files", &st) == -1) {
+      mkdir("u2_files", 0700);
+    }
+
+    if (stat("u3_files", &st) == -1) {
+      mkdir("u3_files", 0700);
+    }
+
+    if (stat("u4_files", &st) == -1) {
+      mkdir("u4_files", 0700);
+    }
+
+    if (stat("u5_files", &st) == -1) {
+      mkdir("u5_files", 0700);
+    }
+
+    if (stat("u6_files", &st) == -1) {
+      mkdir("u6_files", 0700);
+    }
+
+    if (stat("u7_files", &st) == -1) {
+      mkdir("u7_files", 0700);
+    }
+
+    if (stat("u8_files", &st) == -1) {
+      mkdir("u8_files", 0700);
+    }
+
+    if (stat("u9_files", &st) == -1) {
+      mkdir("u9_files", 0700);
+    }
+
+    if (stat("u10_files", &st) == -1) {
+      mkdir("u10_files", 0700);
+    }
     
     FILE *fileid = fopen(fn1, "w");
 
@@ -513,7 +608,7 @@ int main(int argc, char* argv[]) {
 
     fclose(fileid2);
 
-    /**
+    
     FILE *fileid3 = fopen(fn3, "w");
   
     for (int i=0; i<(N*N); ++i) {
@@ -656,7 +751,8 @@ int main(int argc, char* argv[]) {
       }
 
     fclose(fileid12);
-    **/
+    
+    
   }
 
   FILE *fileid13 = fopen("Test_A.csv", "w");
@@ -672,6 +768,7 @@ int main(int argc, char* argv[]) {
 
   fclose(fileid13);
     
+    
   free(A);
   magma_free(dev_A);
   free(piv);
@@ -682,7 +779,7 @@ int main(int argc, char* argv[]) {
   cudaFreeHost(uN);
   cudaFreeHost(uT);
 
-  /**
+  
   cudaFreeHost(u1);
   cudaFreeHost(u2);
   cudaFreeHost(u3);
@@ -693,7 +790,7 @@ int main(int argc, char* argv[]) {
   cudaFreeHost(u8);
   cudaFreeHost(u9);
   cudaFreeHost(u10);
-  **/
+  
   
   printf("Kernel Time: %gms\n", elapsedTime);
   
@@ -891,14 +988,19 @@ __global__ void transpose(double* idata, double* odata, int dir) {
 }
 
 __global__ void comb_u(double* mat1, double* mat2, double* mat3, int pom) {
-  /**
+  
   int l_i = threadIdx.x;
   int l_j = blockIdx.x;
   int l_k = blockIdx.y;
 
   int g_i = l_i + dev_N*l_j + dev_N*dev_N*l_k;
-  **/
-  
+
+  if (pom == 1) {
+    mat3[g_i] = mat1[g_i] + mat2[g_i];
+  } else {
+    mat3[g_i] = mat1[g_i] - mat2[g_i];
+  }
+  /**
   int x = blockIdx.x * TILE_DIM + threadIdx.x;
   int y = blockIdx.y * TILE_DIM + threadIdx.y;
   int z = blockIdx.z * dev_N * dev_N;
@@ -913,6 +1015,7 @@ __global__ void comb_u(double* mat1, double* mat2, double* mat3, int pom) {
     for (int j = 0; j < TILE_DIM; j+= BLOCK_ROWS)
       mat3[(y+j)*width + x + z] = mat1[(y+j)*width + x + z] - mat2[(y+j)*width + x + z];
   }
+  **/
 }
 
 __global__ void add_react_term(double* idata, double* odata, int mod_bool) {
