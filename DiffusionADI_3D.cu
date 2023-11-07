@@ -81,11 +81,12 @@ int main(int argc, char* argv[]) {
   double phi_C = atof(argv[7]);
   double cap_vf = atof(argv[8]);
   int num_iter = atol(argv[9]);
+  double infarc_radius = atol(argv[10]);
 
   //printf("%s\n", "hey");
   
   long int seed;
-  if (argc > 10) {
+  if (argc > 11) {
     seed = atol(argv[100]);
   } else {
 
@@ -198,6 +199,30 @@ int main(int argc, char* argv[]) {
       //printf("%lf\n", prob_func);
     }
     
+  }
+
+  // Remove all cap indices which are in the radius of infarction
+  int *upd_cap_indices;
+  cudaHostAlloc((void**)&upd_cap_indices, gridsize*sizeof(int), cudaHostAllocDefault);
+
+  int upd_cap_count = 0;
+
+  int x_center = localN/2;
+  int y_center = localN/2;
+  int z_center = localN/2;
+    
+  for (int i=0; i < cap_count; ++i) {
+    temp_index = cap_indices[i];
+    get_coords(temp_index, localN, &x_coord, &y_coord, &z_coord);
+
+    double expr = (x_coord-x_center)*(x_coord-x_center) + (y_coord-y_center)*(y_coord-y_center)
+	+ (z_coord-z_center)*(z_coord-z_center);
+    double dist = sqrt(expr);
+
+    if (dist > infarc_radius) {
+      upd_cap_indices[upd_cap_count] = temp_index;
+      upd_cap_count++;
+    }
   }
   
   magma_init();
@@ -387,8 +412,8 @@ int main(int argc, char* argv[]) {
     for (int j=0; j<num_iter; ++j) {
 
       //Add capillary sources to grid 
-      for (int a=0; a < cap_count; ++a) {
-	int temp_index = cap_indices[a];
+      for (int a=0; a < upd_cap_count; ++a) {
+	int temp_index = upd_cap_indices[a];
 
 	printf("%d\n", temp_index);
 	
@@ -422,8 +447,8 @@ int main(int argc, char* argv[]) {
 
       // Update capillary sources
       cudaMemcpyAsync(uN+i*localN, dev_uN[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-      for (int a=0; a < cap_count; ++a) {
-	int temp_index = cap_indices[a];
+      for (int a=0; a < upd_cap_count; ++a) {
+	int temp_index = upd_cap_indices[a];
 
 	printf("%d\n", temp_index);
 	
@@ -442,6 +467,18 @@ int main(int argc, char* argv[]) {
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u5[i]);  //copy for debugging
       //cudaMemcpyAsync(u5+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+
+      // Update capillary sources
+      cudaMemcpyAsync(uN+i*localN, dev_uN[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+      for (int a=0; a < upd_cap_count; ++a) {
+	int temp_index = upd_cap_indices[a];
+
+	printf("%d\n", temp_index);
+	
+	uN[temp_index] = phi_C;
+      }
+      cudaMemcpyAsync(dev_uN[i], uN+i*localN, gridsize*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
+      
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 1);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u6[i]);  //copy for debugging
       //cudaMemcpyAsync(u6+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
@@ -450,24 +487,21 @@ int main(int argc, char* argv[]) {
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u7[i]);  //copy for debugging
       //cudaMemcpyAsync(u7+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_uN[i], 1);
-
-      // Update capillary sources
-      cudaMemcpyAsync(uN+i*localN, dev_uN[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-      for (int a=0; a < cap_count; ++a) {
-	int temp_index = cap_indices[a];
-
-	printf("%d\n", temp_index);
-	
-	uN[temp_index] = phi_C;
-      }
-      cudaMemcpyAsync(dev_uN[i], uN+i*localN, gridsize*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
-      
       add_react_term<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_uT[i], dev_uN[i], 1);
       expl_z<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_u[i], dev_du[i], 2);
       comb_u<<<bPG3D, tPB3D, 0, stream[i]>>>(dev_uN[i], dev_du[i], dev_uN[i], 0);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_u8[i]);  //copy for debugging
       //cudaMemcpyAsync(u8+i*localN, dev_uN[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+      cudaMemcpyAsync(uN+i*localN, dev_uN[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+      for (int a=0; a < upd_cap_count; ++a) {
+	int temp_index = upd_cap_indices[a];
+
+	printf("%d\n", temp_index);
+	
+	uN[temp_index] = phi_C;
+      }
+      cudaMemcpyAsync(dev_uN[i], uN+i*localN, gridsize*sizeof(double), cudaMemcpyHostToDevice, stream[i]);
       transpose<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uN[i], dev_uT[i], 0);
       magma_dgetmatrix(m, n, dev_A, m, A+i*localN, m, 0);
       //copy<<<bPG2D_trans, tPB2D_trans, 0, stream[i]>>>(dev_uT[i], dev_u9[i]);  //copy for debugging
@@ -538,9 +572,9 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i<numStreams; ++i)
     cudaStreamDestroy(stream[i]);
 
-   for (int a=0; a < cap_count; ++a) {
+   for (int a=0; a < upd_cap_count; ++a) {
      
-     int temp_index = cap_indices[a];
+     int temp_index = upd_cap_indices[a];
 
      //printf("%d\n", temp_index);
 	
