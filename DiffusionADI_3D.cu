@@ -241,7 +241,6 @@ int main(int argc, char* argv[]) {
   cudaHostAlloc((void**)&du, gridsize*sizeof(double), cudaHostAllocDefault);
   cudaHostAlloc((void**)&uT, gridsize*sizeof(double), cudaHostAllocDefault);  //delete later
   cudaHostAlloc((void**)&uN, gridsize*sizeof(double), cudaHostAllocDefault);  //delete later
-
   
   cudaHostAlloc((void**)&u1, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
   cudaHostAlloc((void**)&u2, localN*localN*localN*sizeof(double), cudaHostAllocDefault);
@@ -443,6 +442,18 @@ int main(int argc, char* argv[]) {
       cudaMemcpyAsync(u+i*localN, dev_u[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       cudaMemcpyAsync(du+i*localN, dev_du[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
       cudaMemcpyAsync(uN+i*localN, dev_uN[i], gridsize*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+
+      //Add capillary sources to grid
+      
+      for (int a=0; a < cap_count; ++a) {
+	int temp_index = cap_indices[a];
+
+	printf("%d\n", temp_index);
+	
+	u[temp_index] = phi_C;
+      }
+      
+      
       // Transpose grid in kernel
       //transpose<<<blocksPerGrid, threadsPerBlock, 0, stream[i]>>>(dev_du[i], dev_uT[i]);
       // Iterate implicitly in the y direction in kernel
@@ -462,8 +473,8 @@ int main(int argc, char* argv[]) {
 
   
   for (int i=0; i<numStreams; ++i) {
-    cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
-    cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(du+i*localN, dev_du[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
+    //cudaMemcpyAsync(u+i*localN, dev_u[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
     //cudaMemcpyAsync(u1+i*localN, dev_u1[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
     //cudaMemcpyAsync(u2+i*localN, dev_u2[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
     //cudaMemcpyAsync(u3+i*localN, dev_u3[i], localN*localN*localN*sizeof(double), cudaMemcpyDeviceToHost, stream[i]);
