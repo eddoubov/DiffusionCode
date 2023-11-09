@@ -11,6 +11,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#define MAXCHAR 1000
+
 const int numStreams = 1;
 const int maxThreadsPerBlock = 1024;
 const int TILE_DIM = 32;
@@ -48,7 +50,7 @@ void randomize (int array[], int n, long int seed) {
     int j = lrand48() % (i+1);
 
     if (i == 10) {
-      printf("%d\n", j);
+      //printf("%d\n", j);
     }
 
     swap(&array[i], &array[j]);
@@ -76,12 +78,12 @@ int main(int argc, char* argv[]) {
   double dx = atof(argv[2]);
   double tau = atof(argv[3]);
   double D = atof(argv[4]);
-  double R = atof(argv[5]);
-  double C = atof(argv[6]);
-  double phi_C = atof(argv[7]);
-  double cap_vf = atof(argv[8]);
-  int num_iter = atol(argv[9]);
-  double infarc_radius = atol(argv[10]);
+  double phi_C = atof(argv[5]);
+  double cap_per_mm2 = atof(argv[6]);
+  double neur_per_mm3 = atof(argv[7]);
+  double firing_rate = atof(argv[8]);
+  double infarc_radius = atof(argv[9]);
+  int num_iter = atol(argv[10]);
 
   //printf("%s\n", "hey");
   
@@ -100,14 +102,34 @@ int main(int argc, char* argv[]) {
   int localN = N/numStreams;
   int gridsize = localN*localN*localN;
 
+   // Define physiological parameters
+  double venule_radius = 5;
+  double venule_area = 3.14159265*venule_radius*venule_radius;
+  double num_cap = cap_per_mm2*((N*dx)/1000)*((N*dx)/1000);
+  double cap_vf = (num_cap*venule_area)/(N*dx*N*dx);
+  printf("%lf\n", cap_vf);
+
+  double cons_rate = 0.0026;
+  double neuron_radius = 8.7;
+  double neuron_volume = (4.0/3)*3.14159265*neuron_radius*neuron_radius*neuron_radius;
+  printf("%lf\n", neuron_volume);
+  double ratio_neur = (neuron_volume/(1000*1000*1000))*neur_per_mm3;
+  printf("%lf\n", ratio_neur);
+  
   long int Vt = N*N*N;
   long int Nc = Vt*cap_vf;
   double mu = N/cbrt(Nc);
   double sigma = .43;
 
-  printf("%ld\n", Nc);
-  printf("%lf\n", mu);
+  //printf("%ld\n", Nc);
+  //printf("%lf\n", mu);  
+  
+  // Define R and C
+  double Rs = cap_vf;
+  double R = Rs/(1-Rs);
 
+  double C = cons_rate*firing_rate*ratio_neur;
+  
   // Define grid and thread dimensions
   // Turn the following into an if statement later
   // to account for N > 1024
@@ -121,10 +143,11 @@ int main(int argc, char* argv[]) {
   double beta = time_step*C;
   printf("%lf\n", lambda);
   printf("%lf\n", alpha);
+  printf("%lf\n", beta);
 
   // Start Monte-Carlo Method
   srand48(seed);
-  printf("%ld\n", seed);
+  //printf("%ld\n", seed);
   
   int *rand_indices, *cap_indices;
   cudaHostAlloc((void**)&rand_indices, gridsize*sizeof(int), cudaHostAllocDefault);
@@ -144,63 +167,95 @@ int main(int argc, char* argv[]) {
   int x_coord, y_coord, z_coord;
   int x_cap, y_cap, z_cap;
   int temp_index, cap_index;
+
+  char fn_cap[18];
+  sprintf(fn_cap, "cap_distr_N%d.csv", N);
   
-  for (int i=0; i< gridsize; ++i) {
+  if (stat(fn_cap, &st) == -1) {
+  
+    for (int i=0; i< gridsize; ++i) {
 
-    temp_index = rand_indices[i];
+      temp_index = rand_indices[i];
     
-    get_coords(temp_index, localN, &x_coord, &y_coord, &z_coord);
+      get_coords(temp_index, localN, &x_coord, &y_coord, &z_coord);
     
-    if (i == 0) {
-      cap_indices[cap_count] = temp_index;
-      cap_count++;
-      continue;
-    }
-
-    double min_dist_cap;
-    
-    for (int j=0; j<cap_count; ++j) {
-      cap_index = cap_indices[j];
-      get_coords(cap_index, localN, &x_cap, &y_cap, &z_cap);
-
-      double expr = (x_coord-x_cap)*(x_coord-x_cap) + (y_coord-y_cap)*(y_coord-y_cap)
-	+ (z_coord-z_cap)*(z_coord-z_cap);
-      double dist = sqrt(expr);
-
-      if (j==0) {
-	min_dist_cap = dist;
-      } else if(dist < min_dist_cap) {
-	min_dist_cap = dist;
+      if (i == 0) {
+	cap_indices[cap_count] = temp_index;
+	cap_count++;
+	continue;
       }
-    }
 
-    //printf("%lf\n", erfc(-1*(min_dist_cap-mu)/(sqrt(2)*sigma)));
-    double prob_func = (0.5)*erfc(-1*(min_dist_cap-mu)/(sigma)*M_SQRT1_2);
-    //printf("%lf\n", prob_func);
-    double rand_num = drand48();
-
-    if (rand_num <= prob_func) {
-      cap_indices[cap_count] = temp_index;
-      cap_count++;
-      //printf("%lf\n", rand_num);
-      //printf("%lf\n", prob_func);
-      //printf("%d\n", cap_count);
-      //printf("%d\n", i);
-      double num = cap_count;
-      double denom = i;
-      double prop = num/denom;
-      //printf("%lf\n", prop);
-    }
-
-    if (i == 10) {
-      //printf("%d,", x_cap);
-      //printf("%d,", y_cap);
-      //printf("%d\n", z_cap);
-      //printf("%lf\n", prob_func);
-    }
+      double min_dist_cap;
     
-  }
+      for (int j=0; j<cap_count; ++j) {
+	cap_index = cap_indices[j];
+	get_coords(cap_index, localN, &x_cap, &y_cap, &z_cap);
 
+	double expr = (x_coord-x_cap)*(x_coord-x_cap) + (y_coord-y_cap)*(y_coord-y_cap)
+	  + (z_coord-z_cap)*(z_coord-z_cap);
+	double dist = sqrt(expr);
+
+	if (j==0) {
+	  min_dist_cap = dist;
+	} else if(dist < min_dist_cap) {
+	  min_dist_cap = dist;
+	}
+      }
+
+      //printf("%lf\n", erfc(-1*(min_dist_cap-mu)/(sqrt(2)*sigma)));
+      double prob_func = (0.5)*erfc(-1*(min_dist_cap-mu)/(sigma)*M_SQRT1_2);
+      //printf("%lf\n", prob_func);
+      double rand_num = drand48();
+
+      if (rand_num <= prob_func) {
+	cap_indices[cap_count] = temp_index;
+	cap_count++;
+	//printf("%lf\n", rand_num);
+	//printf("%lf\n", prob_func);
+	//printf("%d\n", cap_count);
+	//printf("%d\n", i);
+	double num = cap_count;
+	double denom = i;
+	double prop = num/denom;
+	//printf("%lf\n", prop);
+      }
+
+      if (i == 10) {
+	//printf("%d,", x_cap);
+	//printf("%d,", y_cap);
+	//printf("%d\n", z_cap);
+	//printf("%lf\n", prob_func);
+      }
+    
+    }
+    // Write random capillary distribution indices to csv file  
+    FILE *fileid_cap_distr = fopen(fn_cap, "w");
+
+    for (int i=0; i<cap_count; ++i) {
+      fprintf(fileid_cap_distr, "%d\n", cap_indices[i]);
+    }
+  
+    fclose(fileid_cap_distr);
+    
+  } else {
+    FILE *fptr;
+    char row[MAXCHAR];
+
+    fptr = fopen(fn_cap, "r");
+
+    int i_cap = 0;
+    while (feof(fptr) != true) {
+      fgets(row, MAXCHAR, fptr);
+      cap_indices[i_cap] = atoi(row);
+      printf("%d\n", cap_indices[i_cap]);
+      i_cap++;      
+    }
+
+    cap_count = i_cap-1;
+    
+    fclose(fptr);
+  }
+  
   // Remove all cap indices which are in the radius of infarction
   int *upd_cap_indices;
   cudaHostAlloc((void**)&upd_cap_indices, gridsize*sizeof(int), cudaHostAllocDefault);
