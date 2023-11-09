@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
   double cap_vf = (num_cap*venule_area)/(N*dx*N*dx);
   printf("%lf\n", cap_vf);
 
-  double cons_rate = 0.0026;
+  double cons_rate = 0.26;
   double neuron_radius = 8.7;
   double neuron_volume = (4.0/3)*3.14159265*neuron_radius*neuron_radius*neuron_radius;
   printf("%lf\n", neuron_volume);
@@ -636,7 +636,7 @@ int main(int argc, char* argv[]) {
      u[temp_index] = phi_C;
    }   
   
-  char fn1[25], fn2[23];
+   char fn1[25], fn2[100], temp_fn[100];
   //char fn3[25], fn4[25], fn5[25], fn6[25], fn7[25], fn8[25], fn9[25], fn10[25], fn11[25], fn12[27];
 
   for (int j=0; j<N; ++j) {
@@ -644,7 +644,8 @@ int main(int argc, char* argv[]) {
     int offset = j*N*N;
 
     sprintf(fn1, "du_files/Test_du_%d.csv", j);
-    sprintf(fn2, "u_files/Test_u_%d.csv", j);
+    sprintf(fn2, "u_files_r%lf_nn%lf_a%lf/Test_u_%d.csv", infarc_radius, neur_per_mm3, phi_C, j);
+    sprintf(temp_fn, "u_files_r%lf_nn%lfd_a%lf", infarc_radius, neur_per_mm3, phi_C);
 
     /**
     sprintf(fn3, "u1_files/Test_u1_%d.csv", j);
@@ -663,8 +664,8 @@ int main(int argc, char* argv[]) {
       mkdir("du_files", 0700);
     }
     
-    if (stat("u_files", &st) == -1) {
-      mkdir("u_files", 0700);
+    if (stat(temp_fn, &st) == -1) {
+      mkdir(temp_fn, 0700);
     }
 
     /**
